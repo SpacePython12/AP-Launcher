@@ -10,50 +10,92 @@ import requests
 import subprocess
 import threading
 
+class LabeledEntry(Frame):
+
+    def __init__(self, parent, label: str, defaultval: str, elength=20):
+        super().__init__(parent)
+        self.label = Label(self, text=label)
+        self.entryvar = StringVar(self)
+        self.entryvar.set(defaultval)
+        self.entry = Entry(self, textvariable=self.entryvar, width=elength)
+
+    def grid(self, column, row, sticky=""):
+        super().grid(column=column, row=row)
+        if sticky == "":
+            super().grid(column=column, row=row)
+            self.label.grid(column=0, row=0)
+            self.entry.grid(column=1, row=0)
+        else:
+            super().grid(column=column, row=row, sticky=sticky)
+            self.label.grid(column=0, row=0, sticky=sticky)
+            self.entry.grid(column=1, row=0, sticky=sticky)
+
+    def get(self):
+        return self.entryvar.get()
+
+    def set(self, val):
+        self.entryvar.set(val)
+
+
 class App:
 
     def __init__(self):
         self.win = Tk()
         self.win.title("AP Launcher")
         self.tabs = Notebook(self.win)
-        self.tabs.pack()
+        self.tabs.grid()
         self.minecraftdir = os.path.join(os.getenv('APPDATA'), '.minecraft')
         self.accounts = self.get_accounts()
         self.mainframe = Frame(self.win)
         self.tabs.add(self.mainframe, text="Versions")
         self.background = ImageTk.PhotoImage(Image.open("assets/background.png"))
         self.background2 = Label(self.mainframe, image=self.background)
-        self.background2.pack()
+        self.background2.grid(column=0, row=0, sticky="nsew")
         self.buttonframe = Frame(self.mainframe)
-        self.buttonframe.pack(side="left")
+        self.buttonframe.grid(column=0, row=1)
         self.accountlabel = Label(self.buttonframe, text="Account: ")
-        self.accountlabel.pack(side="left")
+        self.accountlabel.grid(column=1, row=0)
         self.accountbutton = Button(self.buttonframe, text="Choose...", command=lambda: self.accountdialog())
-        self.accountbutton.pack(side="left")
-        self.versionvar = StringVar()
+        self.accountbutton.grid(column=2, row=0)
         selectedprofile = self.accounts["selectedProfile"]
-        self.versionvar.set(self.accounts["profiles"][selectedprofile]["lastVersionId"])
+        self.versionvar = StringVar()
+        self.versionvar.set(self.accounts["profiles"][selectedprofile]["name"])
         self.versions = self.get_versions()
         self.versionlabel = Label(self.buttonframe, text="Version: ")
-        self.versionlabel.pack(side="left")
+        self.versionlabel.grid(column=3, row=0)
         self.versionlist = Combobox(self.buttonframe, textvariable=self.versionvar)
-        self.versionlist.pack(side="left")
+        self.versionlist.grid(column=4, row=0)
         self.versionlist["values"] = self.versions
         self.playbutton = Button(self.win, text="\nPlay\n", command=lambda: self.start_game())
-        self.playbutton.pack(expand=True, fill="x")
+        self.playbutton.grid(column=0, row=2, sticky="nsew")
         self.processframe = Frame(self.win)
         self.tabs.add(self.processframe, text="Game Output")
         self.processtext = ScrolledText(self.processframe, state="disabled")
-        self.processtext.pack()
+        self.processtext.grid(column=0, row=2, sticky="nsew")
+        self.profileframe = Frame(self.win)
+        self.tabs.add(self.profileframe, text="Edit Profiles")
+        self.profileselect = Frame(self.profileframe)
+        self.profileselect.grid(column=0, row=0, sticky="nsew")
+        self.profilelabel = Label(self.profileselect, text="Profile: ")
+        self.profilelabel.grid(column=0, row=0, sticky="nsew")
+        self.profilelist = Combobox(self.profileselect, textvariable=self.versionvar)
+        self.profilelist.grid(column=1, row=0, sticky="nsew")
+        self.profilelist["values"] = self.versions
+        self.profname = LabeledEntry(self.profileframe, "Name: ", "")
+        self.profname.grid(column=0, row=1, sticky="nsew")
+        self.profgamedir = LabeledEntry(self.profileframe, "Game Directory: ", os.path.join(os.getenv('APPDATA'), '.minecraft'), elength=30)
+        self.profgamedir.grid(column=0, row=2, sticky="nsew")
+        self.profjavadir = LabeledEntry(self.profileframe, "Java Directory: ", f'{os.getenv("JAVA_HOME")}\\bin\\javaw.exe', elength=30)
+        self.profjavadir.grid(column=0, row=3, sticky="nsew")
+        self.profjavargs = LabeledEntry(self.profileframe, "JVM Arguments: ", "-Xmx2G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M", elength=50)
+        self.profjavargs.grid(column=0, row=4, sticky="nsew")
+        self.profilelist.bind("<<ComboboxSelected>>", lambda: self.update_profiles(self.versionvar.get(), self.profname, self.profgamedir))
         self.accesstoken = None
         self.username = None
         self.accounttype = "microsoft"
 
     def get_versions(self):
-        vdir = os.path.join(self.minecraftdir, 'versions')
-        for root, folders, files in os.walk(vdir):
-            versions = folders
-            break
+        versions = list(self.accounts["profiles"].keys())
         return versions
 
     def get_accounts(self):
@@ -77,7 +119,7 @@ class App:
         type_box = Checkbutton(login_frame, variable=type_var)
         type_box.grid(column=1, row=1)
         username_var = StringVar(login_frame)
-        username_label = Label(login_frame, text="Username or email:")
+        username_label = Label(login_frame, text="Email:")
         username_label.grid(column=0, row=2)
         username_entry = Entry(login_frame, textvariable=username_var)
         username_entry.grid(column=1, row=2)
@@ -88,8 +130,14 @@ class App:
         password_entry.grid(column=1, row=3)
         login_button = Button(login_frame, text="Login", command=lambda: self.login(dwin, username_var.get(), password_var.get(), offline=bool(connect_var.get())))
         login_button.grid(column=0, row=4)
-        connect_box.config(command=lambda: self.toggle_premium_mode(password_label, password_entry, connect_var))
+        connect_box.config(command=lambda: self.toggle_premium_mode(username_label, password_label, password_entry, connect_var))
         type_box.config(command=lambda: self.toggle_account_type(type_var))
+
+    def update_profiles(self, name, n, gd, jd, ja):
+        n.set(self.accounts["profiles"][name]["name"])
+        gd.set(self.accounts["profiles"][name]["gameDir"])
+        jd.set(self.accounts["profiles"][name]["javaDir"])
+        ja.set(self.accounts["profiles"][name]["javaArgs"])
 
     def login(self, win, username, password, error=True, offline=False):
         if username == "":
@@ -146,7 +194,7 @@ class App:
         "-username",
         self.username,
         "-version",
-        self.versionvar.get(),
+        self.accounts["profiles"][self.versionvar.get()]["lastVersionId"],
         "-accessToken",
         self.accesstoken,
         "-accountType",
@@ -185,12 +233,14 @@ class App:
         self.processtext.insert("end", text+"\n")
         self.processtext.config(state="disabled")
         
-    def toggle_premium_mode(self, pl, pe, cv):
+    def toggle_premium_mode(self, ul, pl, pe, cv):
         if cv.get() == 1:
             pl.grid(column=0, row=3)
+            ul.config(text="Email:")
             pe.grid(column=1, row=3)
         elif cv.get() == 0:
             pl.grid_forget()
+            ul.config(text="Username:")
             pe.grid_forget()
     
     def toggle_account_type(self, tv):
@@ -198,8 +248,6 @@ class App:
             self.accounttype = "mojang"
         elif tv.get() == 0:
             self.accounttype = "microsoft"
-
-
 
 if __name__ == "__main__":
     main = App()

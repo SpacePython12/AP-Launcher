@@ -7,6 +7,7 @@ import subprocess
 import threading
 import uuid as uuidlib
 
+# Base program derived from https://stackoverflow.com/questions/14531917/launch-minecraft-from-command-line-username-and-password-as-prefix
 
 """
 Debug output
