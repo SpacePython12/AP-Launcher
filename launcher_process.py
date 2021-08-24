@@ -112,14 +112,11 @@ try:
     version = sys.argv[sys.argv.index("-version")+1]
     accessToken = sys.argv[sys.argv.index("-accessToken")+1]
     accountType = sys.argv[sys.argv.index("-accountType")+1]
+    mcDir = sys.argv[sys.argv.index("-mcDir")+1]
+    javaHome = sys.argv[sys.argv.index("-javaHome")+1]
+    javaArgs = sys.argv[sys.argv.index("-javaArgs")+1]
 except ValueError:
     print("Invalid syntax.")
-    quit()
-
-try:
-    mcDir = os.path.join(os.getenv('APPDATA'), '.minecraft')
-except FileNotFoundError:
-    print("Did not find a .minecraft folder.")
     quit()
 
 try:
@@ -169,8 +166,9 @@ debug(versionType)
 debug(assetIndex)
 
 sb = subprocess.Popen([
-    f'{os.getenv("JAVA_HOME")}/bin/javaw.exe',
+    javaHome,
     f'-Djava.library.path={nativesDir}',
+    f'-Djava-args={javaArgs}',
     '-Dminecraft.launcher.brand=custom-launcher',
     '-Dminecraft.launcher.version=2.1',
     '-cp',

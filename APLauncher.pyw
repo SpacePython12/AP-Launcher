@@ -47,7 +47,7 @@ class App:
         self.minecraftdir = os.path.join(os.getenv('APPDATA'), '.minecraft')
         self.accounts = self.get_accounts()
         self.mainframe = Frame(self.win)
-        self.tabs.add(self.mainframe, text="Versions")
+        self.tabs.add(self.mainframe, text="Versions", sticky="nsew")
         self.background = ImageTk.PhotoImage(Image.open("assets/background.png"))
         self.background2 = Label(self.mainframe, image=self.background)
         self.background2.grid(column=0, row=0, sticky="nsew")
@@ -57,10 +57,9 @@ class App:
         self.accountlabel.grid(column=1, row=0)
         self.accountbutton = Button(self.buttonframe, text="Choose...", command=lambda: self.accountdialog())
         self.accountbutton.grid(column=2, row=0)
-        selectedprofile = self.accounts["selectedProfile"]
         self.versionvar = StringVar()
-        self.versionvar.set(self.accounts["profiles"][selectedprofile]["name"])
-        self.versions = self.get_versions()
+        self.get_versions()
+        self.versionvar.set(self.versions[0])
         self.versionlabel = Label(self.buttonframe, text="Version: ")
         self.versionlabel.grid(column=3, row=0)
         self.versionlist = Combobox(self.buttonframe, textvariable=self.versionvar)
@@ -70,7 +69,7 @@ class App:
         self.playbutton.grid(column=0, row=2, sticky="nsew")
         self.processframe = Frame(self.win)
         self.tabs.add(self.processframe, text="Game Output")
-        self.processtext = ScrolledText(self.processframe, state="disabled")
+        self.processtext = ScrolledText(self.processframe, state="disabled", height=35, width=120)
         self.processtext.grid(column=0, row=2, sticky="nsew")
         self.profileframe = Frame(self.win)
         self.tabs.add(self.profileframe, text="Edit Profiles")
@@ -81,7 +80,7 @@ class App:
         self.profilelist = Combobox(self.profileselect, textvariable=self.versionvar)
         self.profilelist.grid(column=1, row=0, sticky="nsew")
         self.profilelist["values"] = self.versions
-        self.profname = LabeledEntry(self.profileframe, "Name: ", "")
+        self.profname = LabeledEntry(self.profileframe, "Name: ", self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]["name"])
         self.profname.grid(column=0, row=1, sticky="nsew")
         self.profgamedir = LabeledEntry(self.profileframe, "Game Directory: ", os.path.join(os.getenv('APPDATA'), '.minecraft'), elength=30)
         self.profgamedir.grid(column=0, row=2, sticky="nsew")
@@ -89,14 +88,43 @@ class App:
         self.profjavadir.grid(column=0, row=3, sticky="nsew")
         self.profjavargs = LabeledEntry(self.profileframe, "JVM Arguments: ", "-Xmx2G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M", elength=50)
         self.profjavargs.grid(column=0, row=4, sticky="nsew")
-        self.profilelist.bind("<<ComboboxSelected>>", lambda: self.update_profiles(self.versionvar.get(), self.profname, self.profgamedir))
+        self.profsave = Button(self.profileframe, text="Save")
+        self.profsave.grid(column=0, row=5, sticky="nsew")
+        self.update_profiles(self.versionvar.get())
+        self.profilelist.bind("<<ComboboxSelected>>", lambda x: self.update_profiles(self.versionvar.get()))
         self.accesstoken = None
         self.username = None
         self.accounttype = "microsoft"
 
     def get_versions(self):
-        versions = list(self.accounts["profiles"].keys())
-        return versions
+        profiles = list(self.accounts["profiles"].keys())
+        versions = []
+        occurences = {}
+        for profile in profiles:
+            name = self.accounts["profiles"][profile]["name"]
+            if name == "":
+                name = "<unnamed installation>"
+            if name in versions:
+                if name in occurences.keys():
+                    occurences[name] = occurences[name] + 1
+                    name = f"{name} ({occurences[name]})"
+                    self.accounts[profile]["name"] = name
+                else:
+                    occurences[name] = 1
+                    name = f"{name} ({occurences[name]})"
+                    self.accounts[profile]["name"] = name
+            versions.append(f'{name} ({self.accounts["profiles"][profile]["lastVersionId"]})')
+        self.profiles = profiles
+        self.versions = versions
+        self.nametoprofile = self.generate_nametoprofile()
+
+    def generate_nametoprofile(self):
+        out = {}
+        for version in self.versions:
+            for profile in self.profiles:
+                if version == f'{self.accounts["profiles"][profile]["name"]} ({self.accounts["profiles"][profile]["lastVersionId"]})':
+                    out[version] = profile
+        return out
 
     def get_accounts(self):
         return json.load(open(os.path.join(self.minecraftdir, "launcher_profiles.json")))
@@ -133,11 +161,18 @@ class App:
         connect_box.config(command=lambda: self.toggle_premium_mode(username_label, password_label, password_entry, connect_var))
         type_box.config(command=lambda: self.toggle_account_type(type_var))
 
-    def update_profiles(self, name, n, gd, jd, ja):
-        n.set(self.accounts["profiles"][name]["name"])
-        gd.set(self.accounts["profiles"][name]["gameDir"])
-        jd.set(self.accounts["profiles"][name]["javaDir"])
-        ja.set(self.accounts["profiles"][name]["javaArgs"])
+    def update_profiles(self, name):
+        self.profname.set(self.accounts["profiles"][self.nametoprofile[name]]["name"])
+        self.profgamedir.set(self.accounts["profiles"][self.nametoprofile[name]]["gameDir"])
+        self.profjavadir.set(self.accounts["profiles"][self.nametoprofile[name]]["javaDir"])
+        self.profjavargs.set(self.accounts["profiles"][self.nametoprofile[name]]["javaArgs"])
+
+    def save_profile(self, name):
+        self.accounts["profiles"][self.nametoprofile[name]] = {"name": self.profname.get(), "type": "custom", "lastVersionId": self.accounts["profiles"][self.nametoprofile[name]]["lastVersionId"], "gameDir": self.profgamedir.get(), "javaDir": self.profjavadir.get(), "javaArgs": self.profjavargs.get()}
+        self.get_versions()
+        self.versionlist["values"] = self.versions
+        self.profilelist["values"] = self.versions
+        
 
     def login(self, win, username, password, error=True, offline=False):
         if username == "":
@@ -194,11 +229,17 @@ class App:
         "-username",
         self.username,
         "-version",
-        self.accounts["profiles"][self.versionvar.get()]["lastVersionId"],
+        self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]["lastVersionId"],
         "-accessToken",
         self.accesstoken,
         "-accountType",
-        self.accounttype
+        self.accounttype,
+        "-mcDir",
+        self.profgamedir.get(),
+        "-javaHome",
+        self.profjavadir.get(),
+        "-javaArgs",
+        self.profjavargs.get()
         ], 
         shell=True,
         text=True,

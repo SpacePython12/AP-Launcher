@@ -1,5 +1,6 @@
-CHANGES IN VERSION 0.2
+CHANGES IN VERSION 0.3
 
-*Added the ability to edit profiles.
-
-Uhhh...I guess that's it?
+*Finished the profile editing screen.
+*Tweaked the login screen. (still doesn't support premium mode, unfortunately)
+*Added support for version installers.
+*Created an installer for the launcher.
