@@ -134,7 +134,7 @@ class App:
         dwin.title("Accounts")
         login_frame = Frame(dwin)
         login_frame.pack(side="left")
-        connect_label = Label(login_frame, text="Premium mode:")
+        connect_label = Label(login_frame, text="Premium mode: ")
         connect_label.grid(column=0, row=0)
         connect_var = IntVar(login_frame)
         connect_var.set(1)

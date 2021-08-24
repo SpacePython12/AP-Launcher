@@ -148,7 +148,7 @@ try:
     versionType = clientJson['type']
     assetIndex = clientJson['assetIndex']['id']
 except:
-    print("Invalid JSON asset index file.")
+    print("Invalid JSON asset index.")
     quit()
 try:
     authDatabase = accountJson["authenticationDatabase"]
