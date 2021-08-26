@@ -2,6 +2,10 @@
 A custom Minecraft launcher coded entirely in python. 
 This is also particularly meant for schools who have blocked essential files in order to prevent the game from running.
 
+**DISCLAIMER:**
+
+This is a passion project of mine, therefore I am NOT responsible for any punishments handed out by your network administrator for using this software.
+
 **Requirements:**
 * Python 3.7 or higher
 * Java 1.8 or higher
