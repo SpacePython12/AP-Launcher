@@ -14,3 +14,5 @@ Currently, installing this raw package will not create a .minecraft folder, that
 Also, this program may have some conflicts with launcher_profiles.json and launcher_accounts.json if they aren't formatted correctly.
 
 In the future, I will link some version packages as backups if Minecraft is blocked on your network.
+
+**BIG** update coming soon!
