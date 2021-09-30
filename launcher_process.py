@@ -6,6 +6,10 @@ from pathlib import Path
 import subprocess
 import threading
 import uuid as uuidlib
+from urllib.request import urlretrieve
+import shutil
+import logging
+import datetime
 
 # Base program derived from https://stackoverflow.com/questions/14531917/launch-minecraft-from-command-line-username-and-password-as-prefix
 
@@ -107,6 +111,34 @@ def get_classpath(lib, mcDir):
 
     return os.pathsep.join(cp)
 
+def move_libraries(cp, dest, libjson):
+    """Moves libraries to natives path"""
+    index = 0
+    for p in cp.split(";"):
+        name = p.split("\\")[-1]
+        try:
+            shutil.copyfile(p, os.path.join(dest, name))
+        except FileNotFoundError:
+            name2 = libjson[index]["name"].replace(":", "/").split("/")
+            urlretrieve(f"https://libraries.minecraft.net/{name2[0].replace('.', '/')}/{name2[1]}/{name2[2]}/{name2[1]}-{name2[2]}.jar", p)
+            shutil.copyfile(p, os.path.join(dest, name))
+        except FileExistsError:
+            os.remove(os.path.join(dest, name))
+            shutil.copyfile(p, os.path.join(dest, name))
+        index += 1
+
+if not os.path.isdir("launcher_logs"):
+    os.mkdir("launcher_logs")
+
+num = 1
+date = datetime.datetime.today().strftime("%Y-%m-%d")
+while os.path.isfile(os.path.join("launcher_logs", f"{date}-{num}.log")):
+    num += 1
+fp = os.path.join("launcher_logs", f"{date}-{num}")
+
+logging.basicConfig(format="[%(asctime)s] [%(name)s/%(levelname)s]: %(message)s", level=logging.INFO)
+handler = logging.FileHandler(fp, "a")
+logging.getLogger('').addHandler(handler)
 try:
     username = sys.argv[sys.argv.index("-username")+1]
     version = sys.argv[sys.argv.index("-version")+1]
@@ -119,53 +151,54 @@ except ValueError:
     print("Invalid syntax.")
     quit()
 
+accountJson = json.load(
+    open(os.path.join(mcDir, "launcher_accounts.json"))
+    )
+clientJson = json.load(
+    open(os.path.join(mcDir, 'versions', version, f'{version}.json'))
+    )
+
+additionalArgs = []
+
+try:
+    inheritor = clientJson["inheritsFrom"]
+except KeyError:
+    inheritor = None
+else:
+    clientJson2 = json.load(
+        open(os.path.join(mcDir, 'versions', inheritor, f'{inheritor}.json'))
+        )
+    additionalArgs.extend(clientJson2["arguments"]["game"])
+    clientJson["libraries"] = clientJson2["libraries"] + clientJson["libraries"]
+
+classPath = get_classpath(clientJson, mcDir)
+
 try:
     nativesDir = os.path.join(mcDir, 'versions', version, 'natives')
+    move_libraries(classPath, nativesDir, clientJson["libraries"])
 except FileNotFoundError:
     os.mkdir(os.path.join(mcDir, 'versions', version, 'natives'))
     nativesDir = os.path.join(mcDir, 'versions', version, 'natives')
-try:
-    accountJson = json.load(
-        open(os.path.join(mcDir, "launcher_profiles.json"))
-        )
-except FileNotFoundError:
-    print(f"Account not found.")
-    quit()
-try:
-    clientJson = json.load(
-        open(os.path.join(mcDir, 'versions', version, f'{version}.json'))
-        )
-except FileNotFoundError:
-    print(f"{version}.json does not exist.")
-    quit()
-try:
-    classPath = get_classpath(clientJson, mcDir)
-except Exception as e:
-    print(e)
-    quit()
-try:
+    move_libraries(classPath, nativesDir, clientJson["libraries"])
+if inheritor is None:
     mainClass = clientJson['mainClass']
-    versionType = clientJson['type']
     assetIndex = clientJson['assetIndex']['id']
-except:
-    print("Invalid JSON asset index.")
-    quit()
-try:
-    authDatabase = accountJson["authenticationDatabase"]
-    for key in authDatabase:
-        if authDatabase[key]["username"] == username:
-            uuid = authDatabase[key]["uuid"]
-            break
-except:
-    print("Invalid account.")
-    quit()
+else:
+    mainClass = clientJson2['mainClass']
+    assetIndex = clientJson2['assetIndex']['id']
+versionType = clientJson['type']
+authDatabase = accountJson["accounts"]
+for key in authDatabase:
+    if authDatabase[key]["minecraftProfile"]["name"] == username:
+        uuid = authDatabase[key]["minecraftProfile"]["id"]
+        break
 
 debug(classPath)
 debug(mainClass)
 debug(versionType)
 debug(assetIndex)
 
-sb = subprocess.Popen([
+finalArgs = [
     javaHome,
     f'-Djava.library.path={nativesDir}',
     f'-Djava-args={javaArgs}',
@@ -192,29 +225,21 @@ sb = subprocess.Popen([
     accountType,
     '--versionType',
     'release'
-], 
+]
+finalArgs.extend(additionalArgs)
+
+sb = subprocess.Popen(finalArgs, 
 shell=True,
 text=True,
 stdout=subprocess.PIPE,
-stderr=subprocess.STDOUT
+stderr=subprocess.STDOUT,
+stdin=subprocess.DEVNULL
 )
 line = sb.stdout.readline().rstrip()
+isfirstpass = True
 while True:
     if sb.poll() is None and line != "":
-        if line[0].startswith("\t"):
-            print(line)
-        else:
-            try:
-                title, text = line.split(": ", 1)
-                title = title.replace("[", "")
-                title = title.replace("]", "")
-                text = text.replace("ERROR : ", "")
-                time, rinfo = title.split(" ", 1)
-                name, info = rinfo.split("/")
-                print(f"[{time}] {info} from {name}: {text}")
-            except ValueError:
-                if not line.startswith("ERROR : "):
-                    print(line)
+        print(line)
         line = sb.stdout.readline().rstrip()
     else:
         break
