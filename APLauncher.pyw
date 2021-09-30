@@ -175,7 +175,7 @@ class App:
         json.dump(self.accounts, open(os.path.join(self.minecraftdir, "launcher_profiles.json"), "w"), indent=2)
         json.dump(self.cache, open("cache.json", "w"), indent=2)
         self.win.withdraw()
-        quit()
+        sys.exit()
 
     def get_versions(self):
         """Get all available versions and parses them"""
@@ -340,7 +340,9 @@ class App:
         cmdargs, 
         shell=True,
         text=True,
-        stdout=subprocess.PIPE
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL
         )
         line = sb.stdout.readline().rstrip()
         while True:
