@@ -15,8 +15,13 @@ In the future, I will link some version packages as backups if Minecraft is bloc
 
 # Changelog:
 *Java is now automatically installed, so no need to install it anymore!
+
 *If `launcher_process` throws an error, it will now be logged!
+
 *Fixed a LOT of bugs.
+
 *AP Launcher now caches the currently logged in account and selected version.
+
 *Fixed the installer, the last one was super broken.
+
 *I will update this README if I find any more features I added... seriously, I added a lot.
