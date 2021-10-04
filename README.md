@@ -1,6 +1,5 @@
 # AP-Launcher
 A custom Minecraft launcher coded entirely in python. 
-This is also particularly meant for schools who have blocked essential files in order to prevent the game from running.
 
 **Requirements:**
 Python 3.7+, if you are running the source code. Python will not be reqired for full releases.
