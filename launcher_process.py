@@ -8,7 +8,6 @@ import threading
 import uuid as uuidlib
 from urllib.request import urlretrieve
 import shutil
-import logging
 import datetime
 
 # Base program derived from https://stackoverflow.com/questions/14531917/launch-minecraft-from-command-line-username-and-password-as-prefix
@@ -111,34 +110,25 @@ def get_classpath(lib, mcDir):
 
     return os.pathsep.join(cp)
 
-def move_libraries(cp, dest, libjson):
+def move_libraries(mcdir, dest, libjson, cp, version):
     """Moves libraries to natives path"""
     index = 0
-    for p in cp.split(";"):
-        name = p.split("\\")[-1]
-        try:
-            shutil.copyfile(p, os.path.join(dest, name))
-        except FileNotFoundError:
-            name2 = libjson[index]["name"].replace(":", "/").split("/")
-            urlretrieve(f"https://libraries.minecraft.net/{name2[0].replace('.', '/')}/{name2[1]}/{name2[2]}/{name2[1]}-{name2[2]}.jar", p)
-            shutil.copyfile(p, os.path.join(dest, name))
-        except FileExistsError:
-            os.remove(os.path.join(dest, name))
-            shutil.copyfile(p, os.path.join(dest, name))
+    shutil.copyfile(f"{mcDir}/versions/{version}/{version}.jar", os.path.join(dest, f"{version}.jar"))
+    for c in cp.split(";"):
+        name = c.split("\\")[-1]
+        print(f"Looking for {name}...")
+        if not os.path.isfile(os.path.join(dest, name)) and os.path.isfile(c):
+            print(f"{name} is already cached, moving to natives folder")
+            shutil.copyfile(os.path.join(mcDir, "libraries", c.replace("\\", "/")), os.path.join(dest, name))
+        elif not os.path.isfile(c):
+            print(f"{name} is not cached, trying to download")
+            os.makedirs(os.path.join(mcDir, "libraries", *c.replace(f"{mcDir}\\libraries\\", "").split("\\")[:-1]), exist_ok=True)
+            url = "https://libraries.minecraft.net/" + c.replace(f"{mcDir}\\libraries\\", "").replace("\\", "/")
+            urlretrieve(url, os.path.join(mcDir, "libraries", c.replace("\\", "/")))
+            shutil.copyfile(os.path.join(mcDir, "libraries", c.replace("\\", "/")), os.path.join(dest, name))
+        print(f"{name} successfully moved to natives folder.")
         index += 1
 
-if not os.path.isdir("launcher_logs"):
-    os.mkdir("launcher_logs")
-
-num = 1
-date = datetime.datetime.today().strftime("%Y-%m-%d")
-while os.path.isfile(os.path.join("launcher_logs", f"{date}-{num}.log")):
-    num += 1
-fp = os.path.join("launcher_logs", f"{date}-{num}")
-
-logging.basicConfig(format="[%(asctime)s] [%(name)s/%(levelname)s]: %(message)s", level=logging.INFO)
-handler = logging.FileHandler(fp, "a")
-logging.getLogger('').addHandler(handler)
 try:
     username = sys.argv[sys.argv.index("-username")+1]
     version = sys.argv[sys.argv.index("-version")+1]
@@ -149,7 +139,7 @@ try:
     javaArgs = sys.argv[sys.argv.index("-javaArgs")+1]
 except ValueError:
     print("Invalid syntax.")
-    quit()
+    sys.exit()
 
 accountJson = json.load(
     open(os.path.join(mcDir, "launcher_accounts.json"))
@@ -175,11 +165,10 @@ classPath = get_classpath(clientJson, mcDir)
 
 try:
     nativesDir = os.path.join(mcDir, 'versions', version, 'natives')
-    move_libraries(classPath, nativesDir, clientJson["libraries"])
 except FileNotFoundError:
     os.mkdir(os.path.join(mcDir, 'versions', version, 'natives'))
     nativesDir = os.path.join(mcDir, 'versions', version, 'natives')
-    move_libraries(classPath, nativesDir, clientJson["libraries"])
+move_libraries(classPath, nativesDir, clientJson["libraries"], classPath, version)
 if inheritor is None:
     mainClass = clientJson['mainClass']
     assetIndex = clientJson['assetIndex']['id']
@@ -204,6 +193,7 @@ finalArgs = [
     f'-Djava-args={javaArgs}',
     '-Dminecraft.launcher.brand=custom-launcher',
     '-Dminecraft.launcher.version=2.1',
+    '-Dorg.lwjgl.util.DebugLoader=true',
     '-cp',
     classPath,
     'net.minecraft.client.main.Main',
@@ -235,11 +225,8 @@ stdout=subprocess.PIPE,
 stderr=subprocess.STDOUT,
 stdin=subprocess.DEVNULL
 )
-line = sb.stdout.readline().rstrip()
 isfirstpass = True
-while True:
-    if sb.poll() is None and line != "":
+while sb.poll() is None:
+    line = sb.stdout.readline().rstrip()
+    if not line == "":
         print(line)
-        line = sb.stdout.readline().rstrip()
-    else:
-        break

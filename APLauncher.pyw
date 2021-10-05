@@ -1,7 +1,7 @@
 from tkinter import *
 from tkinter.ttk import *
 from tkinter.scrolledtext import ScrolledText
-from tkinter import messagebox
+from tkinter import messagebox, filedialog 
 from PIL import ImageTk, Image
 from urllib.request import urlretrieve
 from zipfile import ZipFile
@@ -12,6 +12,8 @@ import requests
 import subprocess
 import threading
 import re
+import shutil
+import datetime
 
 class SettingsPage(Frame):
 
@@ -62,6 +64,8 @@ class App:
         self.tabs.add(self.mainframe, text="Versions", sticky="nsew")
         if not os.path.isdir("assets"):
             os.mkdir("assets")
+        if not os.path.isdir("temp"):
+            os.mkdir("temp")
         urlretrieve("https://raw.github.com/SpacePython12/AP-Launcher/main/assets/background.png", "assets/background.png")
         self.background = ImageTk.PhotoImage(Image.open("assets/background.png"))
         self.background2 = Label(self.mainframe, image=self.background)
@@ -83,12 +87,16 @@ class App:
                         "id": None,
                         "expiresAt": None
                     },
-                    "premium": True
+                    "premium": True,
+                    "selectedVersion": None
                 }
-        try:
+        if type(self.cache["selectedVersion"]) is type(list()):
             self.versionvar.set(f'{self.cache["selectedVersion"][0]} ({self.cache["selectedVersion"][1]})')
-        except KeyError:
-            self.versionvar.set(self.versions[0])
+        elif type(self.cache["selectedVersion"]) is type(None):
+            try:
+                self.versionvar.set(self.versions[0])
+            except IndexError:
+                pass
         self.versionlabel = Label(self.buttonframe, text="Version: ")
         self.versionlabel.grid(column=3, row=0)
         self.versionlist = Combobox(self.buttonframe, textvariable=self.versionvar, width=30)
@@ -105,7 +113,7 @@ class App:
         self.processtext = ScrolledText(self.processframe, state="disabled", height=35, width=120)
         self.processtext.grid(column=0, row=2, sticky="nsew")
         self.profileframe = Frame(self.win)
-        self.tabs.add(self.profileframe, text="Edit Profiles")
+        self.tabs.add(self.profileframe, text="Profiles")
         self.profileselect = Frame(self.profileframe)
         self.profileselect.grid(column=0, row=0, sticky="nsew")
         self.profilelabel = Label(self.profileselect, text="Profile: ")
@@ -113,7 +121,10 @@ class App:
         self.profilelist = Combobox(self.profileselect, textvariable=self.versionvar)
         self.profilelist.grid(column=1, row=0, sticky="nsew")
         self.profilelist["values"] = self.versions
-        self.profname = LabeledEntry(self.profileframe, "Name: ", self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]["name"])
+        try:
+            self.profname = LabeledEntry(self.profileframe, "Name: ", self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]["name"])
+        except KeyError:
+            self.profname = LabeledEntry(self.profileframe, "Name: ", "N/A")
         self.profname.grid(column=0, row=1, sticky="nsew")
         self.profgamedir = LabeledEntry(self.profileframe, "Game Directory: ", os.path.join(os.getenv('APPDATA'), '.minecraft'), elength=30)
         self.profgamedir.grid(column=0, row=2, sticky="nsew")
@@ -128,6 +139,10 @@ class App:
         self.profjavargs.grid(column=0, row=4, sticky="nsew")
         self.profsave = Button(self.profileframe, text="Save")
         self.profsave.grid(column=0, row=5, sticky="nsew")
+        self.proftrans = Label(self.profileframe, text="OR")
+        self.proftrans.grid(column=0, row=6, sticky="nsew")
+        self.profadd = Button(self.profileframe, text="Import new version", command=lambda: self.open_install_archive())
+        self.profadd.grid(column=0, row=7, sticky="nsew")
         self.update_profiles(self.versionvar.get())
         self.profilelist.bind("<<ComboboxSelected>>", lambda x: self.update_profiles(self.versionvar.get()))
         self.accesstoken = self.cache["accessid"]["id"]
@@ -171,7 +186,6 @@ class App:
 
     def on_closing(self):
         """Saves info before the window is closed"""
-        self.accounts["selectedProfile"] = self.versionvar.get()
         json.dump(self.accounts, open(os.path.join(self.minecraftdir, "launcher_profiles.json"), "w"), indent=2)
         json.dump(self.cache, open("cache.json", "w"), indent=2)
         self.win.withdraw()
@@ -248,7 +262,10 @@ class App:
 
     def update_profiles(self, name):
         """Updates special game arguments"""
-        self.profname.set(self.accounts["profiles"][self.nametoprofile[name]]["name"])
+        try:
+            self.profname.set(self.accounts["profiles"][self.nametoprofile[name]]["name"])
+        except:
+            pass
         try:
             self.profgamedir.set(self.accounts["profiles"][self.nametoprofile[name]]["gameDir"])
         except:
@@ -312,6 +329,7 @@ class App:
             self.currentversion = self.get_latest_version("snapshot")
         else:
             self.currentversion = self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]["lastVersionId"]
+        self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]["lastUsed"] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         thread = threading.Thread(None, lambda: self.sbloop())
         thread.start()
 
@@ -341,29 +359,13 @@ class App:
         shell=True,
         text=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL
         )
-        line = sb.stdout.readline().rstrip()
-        while True:
-            if sb.poll() is None:
-                if line.startswith("\t"):
-                    self.update_procscreen(line)
-                else:
-                    try:
-                        title, text = line.split(": ", 1)
-                        title = title.replace("[", "")
-                        title = title.replace("]", "")
-                        text = text.replace("ERROR : ", "")
-                        time, rinfo = title.split(" ", 1)
-                        name, info = rinfo.split("/")
-                        self.update_procscreen(f"[{time}] {info} from {name}: {text}")
-                    except ValueError:
-                        if not line.startswith("ERROR : "):
-                            self.update_procscreen(line)
-                line = sb.stdout.readline().rstrip()
-            else:
-                break
+        while sb.poll() is None:
+            line = sb.stdout.readline().rstrip()
+            if not line == "":
+                self.update_procscreen(line)
         print("Process finished")
         self.playbutton.config(state="normal", text="\nPlay\n")
         self.playcontext.entryconfigure(0, state="disabled")
@@ -407,6 +409,36 @@ class App:
             zf.extractall("java")
             zf.close()
         os.remove("java/java.zip")
+
+    def open_install_archive(self):
+        filepath = filedialog.askopenfilename(master=self.win, title="Open version file", filetypes=[("ZIP files", "*.zip")])
+        if filepath == "":
+            return
+        with ZipFile(open(filepath, "rb")) as zf:
+            folders = list(set([os.path.dirname(x).split("/")[0] for x in zf.namelist()]))
+            folders.remove("indexes")
+            for folder in folders:
+                infofile = zf.open(f"{folder}/manifest.json")
+                info = json.load(infofile)
+                if os.path.isdir(os.path.join(self.minecraftdir, "versions", folder)):
+                    if not messagebox.askyesno("Confirm", "There is already a version by this name. Would you like to overwrite it?"):
+                        zf.close()
+                        return
+                    else:
+                        shutil.rmtree(os.path.join(self.minecraftdir, "versions", folder))
+                        os.mkdir(os.path.join(self.minecraftdir, "versions", folder))
+                for file_ in zf.namelist():
+                    if file_.startswith(folder) and not file_.endswith("manifest.json"):
+                        zf.extract(file_, os.path.join(self.minecraftdir, "versions"))
+                info["profile"][list(info["profile"].keys())[0]]["created"] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                self.accounts["profiles"][list(info["profile"].keys())[0]] = info["profile"][list(info["profile"].keys())[0]]
+            for file_ in zf.namelist():
+                if file_.startswith("indexes"):
+                    zf.extract(file_, os.path.join(self.minecraftdir, "assets"))
+            messagebox.showinfo("Success", "The version was successfully imported. Restart AP Launcher to see changes.")
+            zf.close()
+            return
+
 
 if __name__ == "__main__":
     main = App()
