@@ -16,9 +16,8 @@ You may need to install some libraries, including...
 In the future, I will link some version packages as backups if Minecraft is blocked on your network.
 
 # Changelog:
-* Java is now automatically installed, so no need to install it anymore!
-* If `launcher_process` throws an error, it will now be logged!
-* Fixed a LOT of bugs.
-* AP Launcher now caches the currently logged in account and selected version.
-* Fixed the installer, the last one was super broken.
-* I will update this README if I find any more features I added... seriously, I added a lot.
+* Version installers are now better supported
+* AP Launcher is now more stable after installation
+* AP Launcher now can run Minecraft!
+    - (Note: assets are being kinked out, for now you will have to play without sound)
+
