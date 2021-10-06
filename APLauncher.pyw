@@ -14,6 +14,7 @@ import threading
 import re
 import shutil
 import datetime
+import webview
 
 class SettingsPage(Frame):
 
@@ -48,7 +49,6 @@ class LabeledEntry(Frame):
     def set(self, val):
         self.entryvar.set(val)
 
-
 class App:
 
     def __init__(self):
@@ -66,16 +66,13 @@ class App:
             os.mkdir("assets")
         if not os.path.isdir("temp"):
             os.mkdir("temp")
-        urlretrieve("https://raw.github.com/SpacePython12/AP-Launcher/main/assets/background.png", "assets/background.png")
+        urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/background.png", filename="assets/background.png")
+        urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/icon.ico", filename="assets/icon.ico")
         self.background = ImageTk.PhotoImage(Image.open("assets/background.png"))
+        self.icon = ImageTk.PhotoImage(file="assets/icon.ico")
+        self.win.iconphoto(True, self.icon)
         self.background2 = Label(self.mainframe, image=self.background)
         self.background2.grid(column=0, row=0, sticky="nsew")
-        self.buttonframe = Frame(self.mainframe)
-        self.buttonframe.grid(column=0, row=1)
-        self.accountlabel = Label(self.buttonframe, text="Account: ")
-        self.accountlabel.grid(column=1, row=0)
-        self.accountbutton = Button(self.buttonframe, text="Choose...", command=lambda: self.accountdialog())
-        self.accountbutton.grid(column=2, row=0)
         self.versionvar = StringVar()
         self.get_versions()
         try:
@@ -97,6 +94,30 @@ class App:
                 self.versionvar.set(self.versions[0])
             except IndexError:
                 pass
+        self.accesstoken = self.cache["accessid"]["id"]
+        self.username = self.cache["username"]
+        self.accounttype = "microsoft"
+        self.premium = self.cache["premium"]
+        self.buttonframe = Frame(self.mainframe)
+        self.buttonframe.grid(column=0, row=1)
+        self.login_frame = Frame(self.buttonframe)
+        self.login_frame.grid(column=0, row=0)
+        self.connect_label = Label(self.login_frame, text=" Premium mode: ")
+        self.connect_label.grid(column=2, row=0)
+        self.connect_var = IntVar(self.login_frame)
+        self.connect_var.set(self.premium)
+        self.connect_box = Checkbutton(self.login_frame, variable=self.connect_var)
+        self.connect_box.grid(column=3, row=0)
+        self.username_var = StringVar(self.login_frame)
+        self.username_var.set(str(self.username))
+        self.username_label = Label(self.login_frame, text="Username:")
+        self.username_label.grid(column=0, row=0)
+        self.username_entry = Entry(self.login_frame, textvariable=self.username_var)
+        self.username_entry.grid(column=1, row=0)
+        self.login_button = Button(self.buttonframe, text="Login", command=lambda: self.login(self.username_var.get(), premium=bool(self.connect_var.get())))
+        self.login_button.grid(column=2, row=0)
+        self.toggle_premium_mode(self.username_label, self.username_entry, self.connect_var)
+        self.connect_box.config(command=lambda: self.toggle_premium_mode(self.username_label, self.username_entry, self.connect_var))        
         self.versionlabel = Label(self.buttonframe, text="Version: ")
         self.versionlabel.grid(column=3, row=0)
         self.versionlist = Combobox(self.buttonframe, textvariable=self.versionvar, width=30)
@@ -145,16 +166,6 @@ class App:
         self.profadd.grid(column=0, row=7, sticky="nsew")
         self.update_profiles(self.versionvar.get())
         self.profilelist.bind("<<ComboboxSelected>>", lambda x: self.update_profiles(self.versionvar.get()))
-        self.accesstoken = self.cache["accessid"]["id"]
-        self.username = self.cache["username"]
-        self.accounttype = "microsoft"
-        self.premium = self.cache["premium"]
-        if not self.username == "":
-            if self.premium:
-                type_ = "Premium"
-            else:
-                type_ = "Non-Premium"
-            self.accountbutton.config(text=f"{self.username} ({type_})")
 
     def kill_process(self):
         """Kills the running Minecraft process. I dont really know what to do about this function..."""
@@ -175,7 +186,6 @@ class App:
             return
         else:
             messagebox.showinfo("Success", "The process was successfully terminated.")
-        
 
     def do_popup(self, event):
         """Popup handler for the process killer"""
@@ -225,41 +235,6 @@ class App:
         """Gets launcher profiles"""
         return json.load(open(os.path.join(self.minecraftdir, "launcher_profiles.json")))
 
-    def accountdialog(self):
-        """Login dialog"""
-        dwin = Toplevel(self.win)
-        dwin.title("Accounts")
-        login_frame = Frame(dwin)
-        login_frame.pack(side="left")
-        connect_label = Label(login_frame, text="Premium mode: ")
-        connect_label.grid(column=0, row=0)
-        connect_var = IntVar(login_frame)
-        connect_var.set(self.premium)
-        connect_box = Checkbutton(login_frame, variable=connect_var)
-        connect_box.grid(column=1, row=0)
-        type_label = Label(login_frame, text="Legacy (Mojang) account:")
-        type_label.grid(column=0, row=1)
-        type_var = IntVar(login_frame)
-        type_var.set(0)
-        type_box = Checkbutton(login_frame, variable=type_var)
-        type_box.grid(column=1, row=1)
-        username_var = StringVar(login_frame)
-        username_var.set(str(self.username))
-        username_label = Label(login_frame, text="Email:")
-        username_label.grid(column=0, row=2)
-        username_entry = Entry(login_frame, textvariable=username_var)
-        username_entry.grid(column=1, row=2)
-        password_var = StringVar(login_frame)
-        password_label = Label(login_frame, text="Password:")
-        password_label.grid(column=0, row=3)
-        password_entry = Entry(login_frame, textvariable=password_var, show="•")
-        password_entry.grid(column=1, row=3)
-        login_button = Button(login_frame, text="Login", command=lambda: self.login(dwin, username_var.get(), password_var.get(), premium=bool(connect_var.get())))
-        login_button.grid(column=0, row=4)
-        self.toggle_premium_mode(username_label, password_label, password_entry, connect_var)
-        connect_box.config(command=lambda: self.toggle_premium_mode(username_label, password_label, password_entry, connect_var))
-        type_box.config(command=lambda: self.toggle_account_type(type_var))
-
     def update_profiles(self, name):
         """Updates special game arguments"""
         try:
@@ -286,36 +261,23 @@ class App:
         self.versionlist["values"] = self.versions
         self.profilelist["values"] = self.versions
         json.dump(open(os.path.join(self.minecraftdir, "launcher_profiles.json"), "w"), self.accounts)
-        
 
-    def login(self, win, username, password, error=True, premium=False):
+    def login(self, username, error=True, premium=False):
         """True login process that requests an access token. (Unfinished)"""
-        if not username == "":
-            if premium:
-                type_ = "Premium"
-            else:
-                type_ = "Non-Premium"
-            self.accountbutton.config(text=f"{username} ({type_})")
         if username == "":
             messagebox.showinfo("Try again", "No login info was provided.")
-            win.lift()
             return
         if not premium:
             self.accesstoken = ""
             self.username = username
             self.cache["username"] = username
             self.cache["premium"] = premium
-            win.withdraw()
         else:
             messagebox.showinfo("Not yet implemented", "Currently, AP Launcher does not support premium accounts.")
-            win.lift()
             return
-            try:
-                clienttoken = self.accounts["clientToken"]
-            except:
-                clienttoken = str(uuid.uuid4())
-                self.accounts["clientToken"] = clienttoken
-            win.withdraw()
+            url = ""
+            login_window = webview.create_window("Login to your Microsoft account", url)
+            webview.start()
 
     def start_game(self):
         """Starts the game"""
@@ -366,7 +328,6 @@ class App:
             line = sb.stdout.readline().rstrip()
             if not line == "":
                 self.update_procscreen(line)
-        print("Process finished")
         self.playbutton.config(state="normal", text="\nPlay\n")
         self.playcontext.entryconfigure(0, state="disabled")
 
@@ -375,22 +336,15 @@ class App:
         self.processtext.config(state="normal")
         self.processtext.insert("end", text+"\n")
         self.processtext.config(state="disabled")
+        self.processtext.see("end")
         
-    def toggle_premium_mode(self, ul, pl, pe, cv):
+    def toggle_premium_mode(self, ul, ue, cv):
         if cv.get() == 1:
-            pl.grid(column=0, row=3)
-            ul.config(text="Email:")
-            pe.grid(column=1, row=3)
+            ul.grid_forget()
+            ue.grid_forget()
         elif cv.get() == 0:
-            pl.grid_forget()
-            ul.config(text="Username:")
-            pe.grid_forget()
-    
-    def toggle_account_type(self, tv):
-        if tv.get() == 1:
-            self.accounttype = "mojang"
-        elif tv.get() == 0:
-            self.accounttype = "microsoft"
+            ul.grid(column=0, row=0)
+            ue.grid(column=1, row=0)
         
     def get_latest_version(self, type_):
         versions = [x[0] for x in os.walk(os.path.join(self.minecraftdir, "versions"))]

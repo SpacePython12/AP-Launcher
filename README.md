@@ -16,8 +16,6 @@ You may need to install some libraries, including...
 In the future, I will link some version packages as backups if Minecraft is blocked on your network.
 
 # Changelog:
-* Version installers are now better supported
-* AP Launcher is now more stable after installation
-* AP Launcher now can run Minecraft!
-    - (Note: assets are being kinked out, for now you will have to play without sound)
-
+* Made some cosmetic changes.
+* Added an icon for the launcher.
+* Minecraft sounds and other assets are now downloaded at the start.

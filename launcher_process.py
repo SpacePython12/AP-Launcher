@@ -7,22 +7,20 @@ import subprocess
 import threading
 import uuid as uuidlib
 from urllib.request import urlretrieve
+from urllib.error import HTTPError
 import shutil
 import datetime
 
 # Base program derived from https://stackoverflow.com/questions/14531917/launch-minecraft-from-command-line-username-and-password-as-prefix
 
-"""
-Debug output
-"""
+
 def debug(str):
+    """Debug output"""
     if os.getenv('DEBUG') != None:
         print(str)
 
-"""
-[Gets the natives_string toprepend to the jar if it exists. If there is nothing native specific, returns and empty string]
-"""
 def get_natives_string(lib):
+    """[Gets the natives_string to prepend to the jar if it exists. If there is nothing native specific, returns and empty string]"""
     arch = ""
     if platform.architecture()[0] == "64bit":
         arch = "64"
@@ -46,11 +44,8 @@ def get_natives_string(lib):
 
     return nativesFile
 
-
-"""
-[Parses "rule" subpropery of library object, testing to see if should be included]
-"""
 def should_use_library(lib):
+    """[Parses "rule" subpropery of library object, testing to see if should be included]"""
     def rule_says_yes(rule):
         useLib = None
 
@@ -85,10 +80,8 @@ def should_use_library(lib):
 
     return shouldUseLibrary
 
-"""
-[Get string of all libraries to add to java classpath]
-"""
 def get_classpath(lib, mcDir):
+    """[Get string of all libraries to add to java classpath]"""
     cp = []
 
     for i in lib["libraries"]:
@@ -129,6 +122,27 @@ def move_libraries(mcdir, dest, libjson, cp, version):
         print(f"{name} successfully moved to natives folder.")
         index += 1
 
+def download_asset(hash_, failedlist):
+    try:
+        urlretrieve(url=f"https://resources.download.minecraft.net/{hash_[:2]}/{hash_}", filename=os.path.join(assetsDir, f"objects/{hash_[:2]}/{hash_}"))
+    except HTTPError:
+        failedlist.append(hash_)
+
+def download_assets(assetsdir, assetindex):
+    failedlist = []
+    for hash_ in [assetindex["objects"][asset]["hash"] for asset in list(assetindex["objects"].keys())]:
+        if not os.path.isdir(os.path.join(assetsDir, f"objects/{hash_[:2]}")):
+            os.mkdir(os.path.join(assetsDir, f"objects/{hash_[:2]}"))
+        if not os.path.isfile(os.path.join(assetsDir, f"objects/{hash_[:2]}/{hash_}")):
+            thread = threading.Thread(None, lambda: download_asset(hash_, failedlist))
+            thread.start()
+    for hash_ in failedlist:
+        if not os.path.isdir(os.path.join(assetsDir, f"objects/{hash_[:2]}")):
+            os.mkdir(os.path.join(assetsDir, f"objects/{hash_[:2]}"))
+        if not os.path.isfile(os.path.join(assetsDir, f"objects/{hash_[:2]}/{hash_}")):
+            thread = threading.Thread(None, lambda: download_asset(hash_, failedlist))
+            thread.start()
+
 try:
     username = sys.argv[sys.argv.index("-username")+1]
     version = sys.argv[sys.argv.index("-version")+1]
@@ -147,6 +161,11 @@ accountJson = json.load(
 clientJson = json.load(
     open(os.path.join(mcDir, 'versions', version, f'{version}.json'))
     )
+assetJson = json.load(
+    open(os.path.join(mcDir, 'assets/indexes', f'{clientJson["assets"]}.json'))
+    )
+assetsDir = os.path.join(mcDir, 'assets')
+download_assets(assetsDir, assetJson)
 
 additionalArgs = []
 
@@ -204,7 +223,7 @@ finalArgs = [
     '--gameDir',
     mcDir,
     '--assetsDir',
-    os.path.join(mcDir, 'assets'),
+    assetsDir,
     '--assetIndex',
     assetIndex,
     '--uuid',
