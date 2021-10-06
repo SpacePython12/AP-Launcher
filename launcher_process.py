@@ -239,13 +239,12 @@ finalArgs.extend(additionalArgs)
 
 sb = subprocess.Popen(finalArgs, 
 shell=True,
-text=True,
 stdout=subprocess.PIPE,
 stderr=subprocess.STDOUT,
 stdin=subprocess.DEVNULL
 )
 isfirstpass = True
 while sb.poll() is None:
-    line = sb.stdout.readline().rstrip()
+    line = sb.stdout.readline().decode("unicode-escape").rstrip()
     if not line == "":
         print(line)

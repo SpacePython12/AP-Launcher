@@ -319,13 +319,12 @@ class App:
         sb = subprocess.Popen(
         cmdargs, 
         shell=True,
-        text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL
         )
         while sb.poll() is None:
-            line = sb.stdout.readline().rstrip()
+            line = sb.stdout.readline().decode("unicode-escape").rstrip()
             if not line == "":
                 self.update_procscreen(line)
         self.playbutton.config(state="normal", text="\nPlay\n")
