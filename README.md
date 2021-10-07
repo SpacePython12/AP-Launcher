@@ -13,9 +13,6 @@ You may need to install some libraries, including...
 * Premium accounts are NOT supported.
 * Modded clients (including Optifine) are NOT supported.
 
-In the future, I will link some version packages as backups if Minecraft is blocked on your network.
-
 # Changelog:
 * Made some cosmetic changes.
-* Added an icon for the launcher.
-* Minecraft sounds and other assets are now downloaded at the start.
+* Added an updater.

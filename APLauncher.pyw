@@ -15,12 +15,25 @@ import re
 import shutil
 import datetime
 import webview
+import hashlib
+import atexit
+import webbrowser
+import configparser
 
-class SettingsPage(Frame):
+VERSION = "0.7"
+
+class AboutPage(Frame):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.label = Label(self, text="Settings page coming soon!")
+        self.titlelabel = Label(self, text=f"Links:", anchor="w")
+        self.titlelabel.grid(column=0, row=0, sticky="nsew")
+        self.bugreportlabel = Label(self, text="     Found a bug? Report it here!", foreground="blue", cursor="hand2")
+        self.bugreportlabel.grid(column=0, row=1, sticky="nsew")
+        self.bugreportlabel.bind("<Button-1>", lambda e: self.open_link("https://github.com/SpacePython12/AP-Launcher/issues/new"))
+
+    def open_link(self, url):
+        webbrowser.open_new(url)
 
 class LabeledEntry(Frame):
 
@@ -53,7 +66,7 @@ class App:
 
     def __init__(self):
         self.win = Tk()
-        self.win.title("AP Launcher")
+        self.win.title(f"AP Launcher v{VERSION}")
         self.tabs = Notebook(self.win)
         self.tabs.grid()
         self.minecraftdir = os.path.join(os.getenv('APPDATA'), '.minecraft')
@@ -166,6 +179,8 @@ class App:
         self.profadd.grid(column=0, row=7, sticky="nsew")
         self.update_profiles(self.versionvar.get())
         self.profilelist.bind("<<ComboboxSelected>>", lambda x: self.update_profiles(self.versionvar.get()))
+        self.aboutpage = AboutPage(self.win)
+        self.tabs.add(self.aboutpage, text="About")
 
     def kill_process(self):
         """Kills the running Minecraft process. I dont really know what to do about this function..."""
@@ -199,6 +214,8 @@ class App:
         json.dump(self.accounts, open(os.path.join(self.minecraftdir, "launcher_profiles.json"), "w"), indent=2)
         json.dump(self.cache, open("cache.json", "w"), indent=2)
         self.win.withdraw()
+        if self.update_version():
+            atexit.register(lambda: self.run_updater())
         sys.exit()
 
     def get_versions(self):
@@ -348,9 +365,13 @@ class App:
     def get_latest_version(self, type_):
         versions = [x[0] for x in os.walk(os.path.join(self.minecraftdir, "versions"))]
         if type_ == "release":
-            filtered = [x.split("\\")[-1][:6] for x in versions if bool(re.match("1\.[1-9][1-9]\.[1-9]", x.split("\\")[-1]))]
+            filtered = [x.split("\\")[-1][:6] for x in versions if bool(re.match("1\.[0-9]+\.[1-9]+", x.split("\\")[-1])) or bool(re.match("1\.[0-9]+", x.split("\\")[-1]))]
+            for x in range(len(filtered)):
+                if bool(re.match("1\.[0-9]+", filtered[x])):
+                    filtered[x] += ".0"
             ranked = [int(x.replace(".", "")) for x in filtered]
-            return filtered[ranked.index(max(ranked))] 
+            if filtered[ranked.index(max(ranked))].endswith(".0"):
+                return filtered[ranked.index(max(ranked))].rstrip(".0")
         elif type_ == "snapshot":
             filtered = [x.split("\\")[-1][:6] for x in versions if bool(re.match("[0-9][0-9]w[0-9][0-9]a", x.split("\\")[-1]))]
             ranked = [int(x.replace("w", "").replace("a", "")) for x in filtered]
@@ -392,6 +413,42 @@ class App:
             zf.close()
             return
 
+    def update_version(self):
+        request = requests.get("https://api.github.com/repos/SpacePython12/AP-Launcher/releases").json()
+        if os.path.isfile("APLauncher.exe") and os.path.isfile("launcher_process.exe"):
+            hash1 = hashlib.sha1()
+            for f in ["APLauncher.exe", "launcher_process.exe"]:
+                with open(f, "rb") as f2:
+                    data = f2.read()
+                    hash1.update(data)
+                    f2.close()
+            durl = None
+            for asset in request[0]["assets"]:
+                if asset["name"] == "update.zip":
+                    durl = asset["browser_download_url"]
+                    break
+            if durl is None:
+                return False
+            if not os.path.isdir("update"):
+                os.mkdir("update")
+            urlretrieve(url=durl, filename="update/update.zip")
+            with ZipFile(open("update/update.zip", "rb")) as zf:
+                zf.extractall("update")
+                zf.close()
+            os.remove("update/update.zip")
+            hash2 = hashlib.sha1()
+            for f in ["update/APLauncher.exe", "update/launcher_process.exe"]:
+                with open(f, "rb") as f2:
+                    data = f2.read()
+                    hash2.update(data)
+                    f2.close()
+            return True
+        else:
+            return False
+
+    def run_updater(self):
+        shutil.move("update/APLauncher.exe", "APLauncher.exe")
+        shutil.move("update/launcher_process.exe", "launcher_process.exe")
 
 if __name__ == "__main__":
     main = App()
