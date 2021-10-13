@@ -106,20 +106,18 @@ def get_classpath(lib, mcDir):
 def move_libraries(mcdir, dest, libjson, cp, version):
     """Moves libraries to natives path"""
     index = 0
+    if not os.path.isdir(dest):
+        os.mkdir(dest)
     shutil.copyfile(f"{mcDir}/versions/{version}/{version}.jar", os.path.join(dest, f"{version}.jar"))
     for c in cp.split(";"):
         name = c.split("\\")[-1]
-        print(f"Looking for {name}...")
         if not os.path.isfile(os.path.join(dest, name)) and os.path.isfile(c):
-            print(f"{name} is already cached, moving to natives folder")
             shutil.copyfile(os.path.join(mcDir, "libraries", c.replace("\\", "/")), os.path.join(dest, name))
         elif not os.path.isfile(c):
-            print(f"{name} is not cached, trying to download")
             os.makedirs(os.path.join(mcDir, "libraries", *c.replace(f"{mcDir}\\libraries\\", "").split("\\")[:-1]), exist_ok=True)
             url = "https://libraries.minecraft.net/" + c.replace(f"{mcDir}\\libraries\\", "").replace("\\", "/")
             urlretrieve(url, os.path.join(mcDir, "libraries", c.replace("\\", "/")))
             shutil.copyfile(os.path.join(mcDir, "libraries", c.replace("\\", "/")), os.path.join(dest, name))
-        print(f"{name} successfully moved to natives folder.")
         index += 1
 
 def download_asset(hash_, failedlist):
@@ -142,6 +140,13 @@ def download_assets(assetsdir, assetindex):
         if not os.path.isfile(os.path.join(assetsDir, f"objects/{hash_[:2]}/{hash_}")):
             thread = threading.Thread(None, lambda: download_asset(hash_, failedlist))
             thread.start()
+
+def move_natives(mcdir, nativesdir):
+    src = os.path.join(mcdir, "bin", "natives")
+    files = [f for f in os.listdir(src) if os.path.isfile(os.path.join(src, f))]
+    for file_ in files:
+        if not os.path.isfile(os.path.join(nativesdir, file_)):
+            shutil.copyfile(os.path.join(mcdir, "bin", "natives", file_), os.path.join(nativesdir, file_))
 
 try:
     username = sys.argv[sys.argv.index("-username")+1]
@@ -188,6 +193,7 @@ except FileNotFoundError:
     os.mkdir(os.path.join(mcDir, 'versions', version, 'natives'))
     nativesDir = os.path.join(mcDir, 'versions', version, 'natives')
 move_libraries(classPath, nativesDir, clientJson["libraries"], classPath, version)
+move_natives(mcDir, nativesDir)
 if inheritor is None:
     mainClass = clientJson['mainClass']
     assetIndex = clientJson['assetIndex']['id']
@@ -245,6 +251,6 @@ stdin=subprocess.DEVNULL
 )
 isfirstpass = True
 while sb.poll() is None:
-    line = sb.stdout.readline().decode("unicode-escape").rstrip()
+    line = sb.stdout.readline().decode("ISO-8859-1").rstrip()
     if not line == "":
         print(line)

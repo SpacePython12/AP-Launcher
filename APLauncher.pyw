@@ -4,6 +4,7 @@ from tkinter.scrolledtext import ScrolledText
 from tkinter import messagebox, filedialog 
 from PIL import ImageTk, Image
 from urllib.request import urlretrieve
+from urllib.error import *
 from zipfile import ZipFile
 import os
 import json
@@ -20,7 +21,7 @@ import atexit
 import webbrowser
 import configparser
 
-VERSION = "0.7"
+VERSION = "0.8"
 
 class AboutPage(Frame):
 
@@ -79,8 +80,13 @@ class App:
             os.mkdir("assets")
         if not os.path.isdir("temp"):
             os.mkdir("temp")
-        urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/background.png", filename="assets/background.png")
-        urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/icon.ico", filename="assets/icon.ico")
+        try:
+            urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/background.png", filename="assets/background.png")
+            urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/icon.ico", filename="assets/icon.ico")
+        except HTTPError:
+            pass
+        except URLError:
+            pass
         self.background = ImageTk.PhotoImage(Image.open("assets/background.png"))
         self.icon = ImageTk.PhotoImage(file="assets/icon.ico")
         self.win.iconphoto(True, self.icon)
@@ -341,7 +347,7 @@ class App:
         stdin=subprocess.DEVNULL
         )
         while sb.poll() is None:
-            line = sb.stdout.readline().decode("unicode-escape").rstrip()
+            line = sb.stdout.readline().decode("ISO-8859-1").rstrip()
             if not line == "":
                 self.update_procscreen(line)
         self.playbutton.config(state="normal", text="\nPlay\n")
@@ -391,9 +397,11 @@ class App:
         with ZipFile(open(filepath, "rb")) as zf:
             folders = list(set([os.path.dirname(x).split("/")[0] for x in zf.namelist()]))
             folders.remove("indexes")
+            folders.remove("natives")
+            folders.remove("")
+            infofile = zf.open("manifest.json")
+            info = json.load(infofile)
             for folder in folders:
-                infofile = zf.open(f"{folder}/manifest.json")
-                info = json.load(infofile)
                 if os.path.isdir(os.path.join(self.minecraftdir, "versions", folder)):
                     if not messagebox.askyesno("Confirm", "There is already a version by this name. Would you like to overwrite it?"):
                         zf.close()
@@ -402,13 +410,16 @@ class App:
                         shutil.rmtree(os.path.join(self.minecraftdir, "versions", folder))
                         os.mkdir(os.path.join(self.minecraftdir, "versions", folder))
                 for file_ in zf.namelist():
-                    if file_.startswith(folder) and not file_.endswith("manifest.json"):
+                    if file_.startswith(folder):
                         zf.extract(file_, os.path.join(self.minecraftdir, "versions"))
                 info["profile"][list(info["profile"].keys())[0]]["created"] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
                 self.accounts["profiles"][list(info["profile"].keys())[0]] = info["profile"][list(info["profile"].keys())[0]]
             for file_ in zf.namelist():
                 if file_.startswith("indexes"):
                     zf.extract(file_, os.path.join(self.minecraftdir, "assets"))
+            for file_ in zf.namelist():
+                if file_.startswith("natives"):
+                    zf.extract(file_, os.path.join(self.minecraftdir, "bin"))
             messagebox.showinfo("Success", "The version was successfully imported. Restart AP Launcher to see changes.")
             zf.close()
             return
@@ -432,6 +443,10 @@ class App:
             if not os.path.isdir("update"):
                 os.mkdir("update")
             urlretrieve(url=durl, filename="update/update.zip")
+            if os.path.isfile("update/APLauncher.exe"):
+                os.remove("update/APLauncher.exe")
+            if os.path.isfile("update/launcher_process.exe"):
+                os.remove("update/launcher_process.exe")
             with ZipFile(open("update/update.zip", "rb")) as zf:
                 zf.extractall("update")
                 zf.close()
@@ -447,6 +462,10 @@ class App:
             return False
 
     def run_updater(self):
+        if os.path.isfile("APLauncher.exe"):
+            os.remove("APLauncher.exe")
+        if os.path.isfile("launcher_process.exe"):
+            os.remove("launcher_process.exe")
         shutil.move("update/APLauncher.exe", "APLauncher.exe")
         shutil.move("update/launcher_process.exe", "launcher_process.exe")
 

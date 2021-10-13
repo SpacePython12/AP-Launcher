@@ -14,5 +14,6 @@ You may need to install some libraries, including...
 * Modded clients (including Optifine) are NOT supported.
 
 # Changelog:
-* Made some cosmetic changes.
-* Added an updater.
+* Restructured the library loading system a bit.
+* Now supports older versions.
+* Tweaked the version installers, versions that didn't work before work now.
