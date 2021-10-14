@@ -81,6 +81,11 @@ class App:
         if not os.path.isdir("temp"):
             os.mkdir("temp")
         try:
+            os.remove("temp/APLauncher.exe")
+            os.remove("temp/launcher_process.exe")
+        except:
+            pass
+        try:
             urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/background.png", filename="assets/background.png")
             urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/icon.ico", filename="assets/icon.ico")
         except HTTPError:
@@ -463,9 +468,9 @@ class App:
 
     def run_updater(self):
         if os.path.isfile("APLauncher.exe"):
-            os.remove("APLauncher.exe")
+            shutil.move("APLauncher.exe", "temp/APLauncher.exe")
         if os.path.isfile("launcher_process.exe"):
-            os.remove("launcher_process.exe")
+            shutil.move("launcher_process.exe", "temp/launcher_process.exe")
         shutil.move("update/APLauncher.exe", "APLauncher.exe")
         shutil.move("update/launcher_process.exe", "launcher_process.exe")
 
