@@ -18,7 +18,7 @@ You may need to install some libraries, including...
 * Now supports older versions.
 * Tweaked the version installers, versions that didn't work before work now.
 
-#Installation instructions:
+# Installation instructions:
 
 - Download `APLauncher.Installer.exe` from a release and run it.
 - The installer will ask you for your username and UUID in 2 prompts.
