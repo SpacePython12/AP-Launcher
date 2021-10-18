@@ -11,12 +11,11 @@ You may need to install some libraries, including...
 `pip install requests`
 
 * Premium accounts are NOT supported.
-* Modded clients (including Optifine) are NOT supported.
 
 # Changelog:
-* Restructured the library loading system a bit.
-* Now supports older versions.
-* Tweaked the version installers, versions that didn't work before work now.
+* Added mod support. (please tell me if one doesn't work)
+* Added logging.
+* AP Launcher now tells you when it crashes, and it allows you to report those crashes on Github.
 
 # Installation instructions:
 

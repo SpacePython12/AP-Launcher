@@ -15,13 +15,38 @@ import threading
 import re
 import shutil
 import datetime
+import time
 import webview
 import hashlib
 import atexit
 import webbrowser
 import configparser
+import traceback
+import getpass
+import logging
+import socket
+import random
+import platform
 
-VERSION = "0.8"
+VERSION = "0.9"
+
+def send_error_report(prog, fatal=False):
+    try:
+        with open(f"launcher_logs/{prog}/latest.log")as log:
+            tb = log.read()
+            tb.replace(getpass.getuser(), "<USER>")
+    except FileNotFoundError:
+        return
+    if fatal:
+        errtype = "crash"
+    else:
+        errtype = "bug"
+    messagebox.showinfo("Report issue", f"Please report this {errtype} by creating an issue on Github.")
+    if messagebox.askyesno("Report issue", f"Would you like to automatically open an issue?"):
+        newline = "\n"
+        body = f"(insert description of bug here)%0A***%0ALog contents:%0A```%0A{tb.replace(newline, '%0A')}%0A```"
+        url = f"https://github.com/SpacePython12/AP-Launcher/issues/new?body={body}"
+        webbrowser.open(url)
 
 class AboutPage(Frame):
 
@@ -31,7 +56,10 @@ class AboutPage(Frame):
         self.titlelabel.grid(column=0, row=0, sticky="nsew")
         self.bugreportlabel = Label(self, text="     Found a bug? Report it here!", foreground="blue", cursor="hand2")
         self.bugreportlabel.grid(column=0, row=1, sticky="nsew")
-        self.bugreportlabel.bind("<Button-1>", lambda e: self.open_link("https://github.com/SpacePython12/AP-Launcher/issues/new"))
+        self.bugreportlabel.bind("<Button-1>", lambda e: self.open_link("https://github.com/SpacePython12/AP-Launcher/issues/new?assignees=&labels=&template=bug_report.md&title="))
+        self.suggestionlabel = Label(self, text="     Have a suggestion? Tell us here!", foreground="blue", cursor="hand2")
+        self.suggestionlabel.grid(column=0, row=2, sticky="nsew")
+        self.suggestionlabel.bind("<Button-1>", lambda e: self.open_link("https://github.com/SpacePython12/AP-Launcher/issues/new?assignees=&labels=&template=feature_request.md&title"))
 
     def open_link(self, url):
         webbrowser.open_new(url)
@@ -66,6 +94,10 @@ class LabeledEntry(Frame):
 class App:
 
     def __init__(self):
+        logger.info(f"Version: {VERSION}")
+        machineinfo = f"OS: {platform.system()}"
+        logger.info(machineinfo)
+        logger.info("AP Launcher has started, now initalizing window.")
         self.win = Tk()
         self.win.title(f"AP Launcher v{VERSION}")
         self.tabs = Notebook(self.win)
@@ -76,6 +108,7 @@ class App:
         self.accounts = self.get_accounts()
         self.mainframe = Frame(self.win)
         self.tabs.add(self.mainframe, text="Versions", sticky="nsew")
+        logger.info("Cleaning up any leftover update files...")
         if not os.path.isdir("assets"):
             os.mkdir("assets")
         if not os.path.isdir("temp"):
@@ -83,14 +116,20 @@ class App:
         try:
             os.remove("temp/APLauncher.exe")
             os.remove("temp/launcher_process.exe")
+            logger.info("Update files cleaned up.")
         except:
+            logger.info("No update files found")
             pass
+        logger.info("Downloading background and icon...")
         try:
             urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/background.png", filename="assets/background.png")
             urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/icon.ico", filename="assets/icon.ico")
+            logger.info("Retrieved background and icon successfully.")
         except HTTPError:
+            logger.info("Unable to retrieve background and icon, using cached.")
             pass
         except URLError:
+            logger.info("Unable to retrieve background and icon, using cached.")
             pass
         self.background = ImageTk.PhotoImage(Image.open("assets/background.png"))
         self.icon = ImageTk.PhotoImage(file="assets/icon.ico")
@@ -99,8 +138,10 @@ class App:
         self.background2.grid(column=0, row=0, sticky="nsew")
         self.versionvar = StringVar()
         self.get_versions()
+        logger.info("Reading cache file...")
         try:
             self.cache = json.load(open("cache.json"))
+            logger.info("Successfully read cache.")
         except FileNotFoundError:
             self.cache = {
                     "username": "",
@@ -111,6 +152,7 @@ class App:
                     "premium": True,
                     "selectedVersion": None
                 }
+            logger.info("No cache file found.")
         if type(self.cache["selectedVersion"]) is type(list()):
             self.versionvar.set(f'{self.cache["selectedVersion"][0]} ({self.cache["selectedVersion"][1]})')
         elif type(self.cache["selectedVersion"]) is type(None):
@@ -192,6 +234,7 @@ class App:
         self.profilelist.bind("<<ComboboxSelected>>", lambda x: self.update_profiles(self.versionvar.get()))
         self.aboutpage = AboutPage(self.win)
         self.tabs.add(self.aboutpage, text="About")
+        logger.info("Successfully initiated window.")
 
     def kill_process(self):
         """Kills the running Minecraft process. I dont really know what to do about this function..."""
@@ -222,10 +265,12 @@ class App:
 
     def on_closing(self):
         """Saves info before the window is closed"""
+        logger.info("Window has been closed, saving cache and profiles...")
         json.dump(self.accounts, open(os.path.join(self.minecraftdir, "launcher_profiles.json"), "w"), indent=2)
         json.dump(self.cache, open("cache.json", "w"), indent=2)
         self.win.withdraw()
         if self.update_version():
+            logger.info("Update is required, setting up asynchronous update process.")
             atexit.register(lambda: self.run_updater())
         sys.exit()
 
@@ -292,6 +337,7 @@ class App:
 
     def login(self, username, error=True, premium=False):
         """True login process that requests an access token. (Unfinished)"""
+        logger.info(f"Logging in as {username}")
         if username == "":
             messagebox.showinfo("Try again", "No login info was provided.")
             return
@@ -309,6 +355,7 @@ class App:
 
     def start_game(self):
         """Starts the game"""
+        logger.info("Starting the game...")
         if self.accesstoken is None and self.username is None:
             messagebox.showinfo("Please Login", "You must login to play Minecraft.")
             return
@@ -327,6 +374,10 @@ class App:
         """Launcher process"""
         self.playbutton.config(state="disabled", text="\nRunning...\n")
         self.playcontext.entryconfigure(0, state="normal")
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.bind(("localhost", 0))
+        sock = server.getsockname()[1]
+        server.listen()
         cmdargs = [
         "launcher_process",
         "-username",
@@ -342,7 +393,9 @@ class App:
         "-javaHome",
         self.profjavadir.get(),
         "-javaArgs",
-        self.profjavargs.get()
+        self.profjavargs.get(),
+        "-launcherServerSocket",
+        str(sock)
         ]
         sb = subprocess.Popen(
         cmdargs, 
@@ -351,10 +404,19 @@ class App:
         stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL
         )
+        conn, addr = server.accept()
         while sb.poll() is None:
-            line = sb.stdout.readline().decode("ISO-8859-1").rstrip()
+            line = sb.stdout.readline().decode("ISO-8859-1")
             if not line == "":
                 self.update_procscreen(line)
+            try:
+                response = conn.recv(1)
+            except OSError:
+                pass
+            else:
+                if response == b"\xff":
+                    messagebox.showerror("Fatal error", "A fatal error has occurred while running the game.")
+                    send_error_report("process", fatal=False)
         self.playbutton.config(state="normal", text="\nPlay\n")
         self.playcontext.entryconfigure(0, state="disabled")
 
@@ -389,6 +451,7 @@ class App:
             return filtered[ranked.index(max(ranked))]
 
     def update_java(self):
+        logger.info("A Java installation was not found, downloading now...")
         urlretrieve("https://corretto.aws/downloads/latest/amazon-corretto-16-x64-windows-jdk.zip", "java/java.zip")
         with ZipFile(open("java/java.zip", "rb")) as zf:
             zf.extractall("java")
@@ -396,6 +459,7 @@ class App:
         os.remove("java/java.zip")
 
     def open_install_archive(self):
+        logger.info("Opening version file...")
         filepath = filedialog.askopenfilename(master=self.win, title="Open version file", filetypes=[("ZIP files", "*.zip")])
         if filepath == "":
             return
@@ -407,8 +471,9 @@ class App:
             infofile = zf.open("manifest.json")
             info = json.load(infofile)
             for folder in folders:
+                logger.info(f"Extracting version {folder}...")
                 if os.path.isdir(os.path.join(self.minecraftdir, "versions", folder)):
-                    if not messagebox.askyesno("Confirm", "There is already a version by this name. Would you like to overwrite it?"):
+                    if not messagebox.askyesno("Confirm", f"There is already a version by the name '{folder}'. Would you like to overwrite it?"):
                         zf.close()
                         return
                     else:
@@ -419,9 +484,11 @@ class App:
                         zf.extract(file_, os.path.join(self.minecraftdir, "versions"))
                 info["profile"][list(info["profile"].keys())[0]]["created"] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
                 self.accounts["profiles"][list(info["profile"].keys())[0]] = info["profile"][list(info["profile"].keys())[0]]
+            logger.info("Extracting asset indexes...")
             for file_ in zf.namelist():
                 if file_.startswith("indexes"):
                     zf.extract(file_, os.path.join(self.minecraftdir, "assets"))
+            logger.info("Extracting required DLL files...")
             for file_ in zf.namelist():
                 if file_.startswith("natives"):
                     zf.extract(file_, os.path.join(self.minecraftdir, "bin"))
@@ -430,6 +497,7 @@ class App:
             return
 
     def update_version(self):
+        logger.info("Checking for updates...")
         request = requests.get("https://api.github.com/repos/SpacePython12/AP-Launcher/releases").json()
         if os.path.isfile("APLauncher.exe") and os.path.isfile("launcher_process.exe"):
             hash1 = hashlib.sha1()
@@ -462,7 +530,10 @@ class App:
                     data = f2.read()
                     hash2.update(data)
                     f2.close()
-            return True
+            if hash1.hexdigest() != hash2.hexdigest():
+                logger.info("Update found.")
+                return True
+            return False
         else:
             return False
 
@@ -475,5 +546,30 @@ class App:
         shutil.move("update/launcher_process.exe", "launcher_process.exe")
 
 if __name__ == "__main__":
-    main = App()
-    main.win.mainloop()
+    if not os.path.isdir("launcher_logs/gui"):
+        os.mkdir("launcher_logs/gui")        
+    if os.path.isfile("launcher_logs/gui/latest.log"):
+        time = datetime.datetime.fromtimestamp(os.path.getctime("launcher_logs/gui/latest.log")).strftime("%Y-%m-%d")
+        num = 1
+        while os.path.isfile(f"launcher_logs/gui/{time}-{num}.log"):
+            num += 1
+        os.rename("launcher_logs/gui/latest.log", f"launcher_logs/gui/{time}-{num}.log")
+    fmt = "[%(asctime)s] (Process %(processName)s thread %(threadName)s func %(funcName)s/%(levelname)s): %(message)s"
+    logging.basicConfig(filename="launcher_logs/gui/latest.log", format=fmt, level=logging.INFO)
+    logger = logging.getLogger()
+    try:
+        main = App()
+    except BaseException as e:
+        messagebox.showerror("Fatal error", "A fatal error has occurred during startup.")
+        logger.error(e, exc_info=True)
+        send_error_report("gui", fatal=True)
+        sys.exit()
+    try:
+        main.win.mainloop()
+    except BaseException as e:
+        if not type(e).__name__ == "SystemExit":
+            messagebox.showerror("Fatal error", "A fatal error has occurred during runtime.")
+            logger.error(e, exc_info=True)
+            send_error_report("gui", fatal=True)
+            main.win.destroy()
+            sys.exit()
