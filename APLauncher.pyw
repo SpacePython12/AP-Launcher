@@ -258,7 +258,7 @@ class App:
     def kill_process(self):
         """Kills the running Minecraft process."""
         try:
-            os.system(f'taskkill /FI "WindowTitle eq Minecraft*" /T /F')
+            os.system(f'cmd /C taskkill /FI "WindowTitle eq Minecraft*" /T /F')
         except:
             messagebox.showerror("Error", "Unable to stop the process.")
             return
@@ -278,6 +278,7 @@ class App:
         json.dump(self.accounts, open(os.path.join(self.minecraftdir, "launcher_profiles.json"), "w"), indent=2)
         json.dump(self.cache, open("cache.json", "w"), indent=2)
         self.win.withdraw()
+        os.system(f'cmd /C taskkill /IM APLauncher.exe /T /F')
         self.update_version()
         sys.exit()
 
@@ -386,6 +387,9 @@ class App:
         sock = server.getsockname()[1]
         server.listen()
         cmdargs = [
+        "title",
+        "launcher_process",
+        "&&",
         "launcher_process",
         "-username",
         self.username,
