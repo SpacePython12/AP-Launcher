@@ -13,9 +13,10 @@ You may need to install some libraries, including...
 * Premium accounts are NOT supported.
 
 # Changelog:
-* Added mod support. (please tell me if one doesn't work)
-* Added logging.
-* AP Launcher now tells you when it crashes, and it allows you to report those crashes on Github.
+* Fullscreen now added (may be buggy)
+* Fixed the updater (probably still broken...)
+* Updated version file format
+* Re-added the ability to kill the Minecraft process
 
 # Installation instructions:
 

@@ -1,7 +1,7 @@
 from tkinter import *
 from tkinter.ttk import *
 from tkinter.scrolledtext import ScrolledText
-from tkinter import messagebox, filedialog 
+from tkinter import messagebox, filedialog, Canvas
 from PIL import ImageTk, Image
 from urllib.request import urlretrieve
 from urllib.error import *
@@ -28,7 +28,7 @@ import socket
 import random
 import platform
 
-VERSION = "0.9"
+VERSION = "0.10"
 
 def send_error_report(prog, fatal=False):
     try:
@@ -100,13 +100,19 @@ class App:
         logger.info("AP Launcher has started, now initalizing window.")
         self.win = Tk()
         self.win.title(f"AP Launcher v{VERSION}")
+        self.win.rowconfigure(0, weight=1)
+        self.win.columnconfigure(0, weight=1)
         self.tabs = Notebook(self.win)
-        self.tabs.grid()
+        self.tabs.grid(column=0, row=0, sticky="nsew")
+        self.tabs.rowconfigure(0, weight=1)
+        self.tabs.columnconfigure(0, weight=1)
         self.minecraftdir = os.path.join(os.getenv('APPDATA'), '.minecraft')
         self.win.protocol("WM_DESTROY_WINDOW", lambda: self.on_closing())
         self.win.protocol("WM_DELETE_WINDOW", lambda: self.on_closing())
         self.accounts = self.get_accounts()
         self.mainframe = Frame(self.win)
+        self.mainframe.rowconfigure(0, weight=1)
+        self.mainframe.columnconfigure(0, weight=1)
         self.tabs.add(self.mainframe, text="Versions", sticky="nsew")
         logger.info("Cleaning up any leftover update files...")
         if not os.path.isdir("assets"):
@@ -114,8 +120,8 @@ class App:
         if not os.path.isdir("temp"):
             os.mkdir("temp")
         try:
-            os.remove("temp/APLauncher.exe")
-            os.remove("temp/launcher_process.exe")
+            os.remove("APLauncher_old.exe")
+            os.remove("launcher_process_old.exe")
             logger.info("Update files cleaned up.")
         except:
             logger.info("No update files found")
@@ -131,11 +137,13 @@ class App:
         except URLError:
             logger.info("Unable to retrieve background and icon, using cached.")
             pass
-        self.background = ImageTk.PhotoImage(Image.open("assets/background.png"))
+        self.background = ImageTk.PhotoImage(file="assets/background.png")
+        self.win.geometry(f"{self.background.width()}x{self.background.height()}")
         self.icon = ImageTk.PhotoImage(file="assets/icon.ico")
         self.win.iconphoto(True, self.icon)
-        self.background2 = Label(self.mainframe, image=self.background)
+        self.background2 = Canvas(self.mainframe, width=self.background.width(), height=self.background.height())
         self.background2.grid(column=0, row=0, sticky="nsew")
+        self.win.bind("<Configure>", lambda e: threading.Thread(None, target=lambda: self.resize_widgets(e)).start())
         self.versionvar = StringVar()
         self.get_versions()
         logger.info("Reading cache file...")
@@ -196,10 +204,13 @@ class App:
         self.playcontext.entryconfigure(0, state="disabled")
         self.playbutton.bind("<Button-3>", lambda x: self.do_popup(x))
         self.processframe = Frame(self.win)
-        self.tabs.add(self.processframe, text="Game Output")
-        self.processtext = ScrolledText(self.processframe, state="disabled", height=35, width=120)
-        self.processtext.grid(column=0, row=2, sticky="nsew")
+        self.processframe.rowconfigure(0, weight=1)
+        self.processframe.columnconfigure(0, weight=1)
+        self.tabs.add(self.processframe, text="Game Output", sticky="nsew")
+        self.processtext = ScrolledText(self.processframe, state="disabled")
+        self.processtext.grid(column=0, row=0, sticky="nsew")
         self.profileframe = Frame(self.win)
+        self.profileframe.columnconfigure(0, weight=1)
         self.tabs.add(self.profileframe, text="Profiles")
         self.profileselect = Frame(self.profileframe)
         self.profileselect.grid(column=0, row=0, sticky="nsew")
@@ -211,7 +222,7 @@ class App:
         try:
             self.profname = LabeledEntry(self.profileframe, "Name: ", self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]["name"])
         except KeyError:
-            self.profname = LabeledEntry(self.profileframe, "Name: ", "N/A")
+            self.profname = LabeledEntry(self.profileframe, "Name: ", "")
         self.profname.grid(column=0, row=1, sticky="nsew")
         self.profgamedir = LabeledEntry(self.profileframe, "Game Directory: ", os.path.join(os.getenv('APPDATA'), '.minecraft'), elength=30)
         self.profgamedir.grid(column=0, row=2, sticky="nsew")
@@ -225,31 +236,29 @@ class App:
         self.profjavargs = LabeledEntry(self.profileframe, "JVM Arguments: ", "-Xmx2G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M", elength=50)
         self.profjavargs.grid(column=0, row=4, sticky="nsew")
         self.profsave = Button(self.profileframe, text="Save")
-        self.profsave.grid(column=0, row=5, sticky="nsew")
+        self.profsave.grid(column=0, row=5, sticky="w")
         self.proftrans = Label(self.profileframe, text="OR")
-        self.proftrans.grid(column=0, row=6, sticky="nsew")
+        self.proftrans.grid(column=0, row=6, sticky="w")
         self.profadd = Button(self.profileframe, text="Import new version", command=lambda: self.open_install_archive())
-        self.profadd.grid(column=0, row=7, sticky="nsew")
+        self.profadd.grid(column=0, row=7, sticky="w")
         self.update_profiles(self.versionvar.get())
         self.profilelist.bind("<<ComboboxSelected>>", lambda x: self.update_profiles(self.versionvar.get()))
         self.aboutpage = AboutPage(self.win)
+        self.aboutpage.columnconfigure(0, weight=1)
         self.tabs.add(self.aboutpage, text="About")
         logger.info("Successfully initiated window.")
 
+    def resize_widgets(self, e, override=False):
+        if ((self.win.winfo_width() != e.width) and (self.win.winfo_height() != e.height)) or override:
+            self.bgfile = Image.open("assets/background.png")
+            self.bgfile = self.bgfile.resize((e.width, e.height), Image.ANTIALIAS)
+            self.background = ImageTk.PhotoImage(self.bgfile)
+            self.background2.create_image(0, 0, image=self.background, anchor="nw")
+
     def kill_process(self):
-        """Kills the running Minecraft process. I dont really know what to do about this function..."""
-        try: 
-            temp = open("temp.txt")
-        except FileNotFoundError:
-            messagebox.showerror("Error", "Unable to stop the process because the process id was not loaded.")
-            return
+        """Kills the running Minecraft process."""
         try:
-            pid = int(temp.read())
-        except:
-            messagebox.showerror("Error", "Unable to stop the process because the process id was corrupted.")
-            return
-        try:
-            os.system(f"taskkill /pid {pid} /f")
+            os.system(f'taskkill /FI "WindowTitle eq Minecraft*" /T /F')
         except:
             messagebox.showerror("Error", "Unable to stop the process.")
             return
@@ -269,9 +278,7 @@ class App:
         json.dump(self.accounts, open(os.path.join(self.minecraftdir, "launcher_profiles.json"), "w"), indent=2)
         json.dump(self.cache, open("cache.json", "w"), indent=2)
         self.win.withdraw()
-        if self.update_version():
-            logger.info("Update is required, setting up asynchronous update process.")
-            atexit.register(lambda: self.run_updater())
+        self.update_version()
         sys.exit()
 
     def get_versions(self):
@@ -423,7 +430,7 @@ class App:
     def update_procscreen(self, text):
         """Updates the console screen"""
         self.processtext.config(state="normal")
-        self.processtext.insert("end", text+"\n")
+        self.processtext.insert("end", text)
         self.processtext.config(state="disabled")
         self.processtext.see("end")
         
@@ -438,9 +445,9 @@ class App:
     def get_latest_version(self, type_):
         versions = [x[0] for x in os.walk(os.path.join(self.minecraftdir, "versions"))]
         if type_ == "release":
-            filtered = [x.split("\\")[-1][:6] for x in versions if bool(re.match("1\.[0-9]+\.[1-9]+", x.split("\\")[-1])) or bool(re.match("1\.[0-9]+", x.split("\\")[-1]))]
+            filtered = [x.split("\\")[-1][:6] for x in versions if bool(re.match(r"1\.[0-9]+\.[1-9]+", x.split("\\")[-1])) or bool(re.match(r"1\.[0-9]+", x.split("\\")[-1]))]
             for x in range(len(filtered)):
-                if bool(re.match("1\.[0-9]+", filtered[x])):
+                if bool(re.match(r"1\.[0-9]+", filtered[x])):
                     filtered[x] += ".0"
             ranked = [int(x.replace(".", "")) for x in filtered]
             if filtered[ranked.index(max(ranked))].endswith(".0"):
@@ -465,8 +472,22 @@ class App:
             return
         with ZipFile(open(filepath, "rb")) as zf:
             folders = list(set([os.path.dirname(x).split("/")[0] for x in zf.namelist()]))
-            folders.remove("indexes")
-            folders.remove("natives")
+            try:
+                folders.remove("indexes")
+            except ValueError:
+                pass
+            try:
+                folders.remove("natives")
+            except ValueError:
+                pass
+            try:
+                folders.remove("libraries")
+            except ValueError:
+                pass
+            try:
+                folders.remove("objects")
+            except ValueError:
+                pass
             folders.remove("")
             infofile = zf.open("manifest.json")
             info = json.load(infofile)
@@ -484,14 +505,23 @@ class App:
                         zf.extract(file_, os.path.join(self.minecraftdir, "versions"))
                 info["profile"][list(info["profile"].keys())[0]]["created"] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
                 self.accounts["profiles"][list(info["profile"].keys())[0]] = info["profile"][list(info["profile"].keys())[0]]
-            logger.info("Extracting asset indexes...")
+            logger.info("Extracting assets...")
             for file_ in zf.namelist():
                 if file_.startswith("indexes"):
+                    zf.extract(file_, os.path.join(self.minecraftdir, "assets"))
+            for file_ in zf.namelist():
+                if file_.startswith("objects"):
                     zf.extract(file_, os.path.join(self.minecraftdir, "assets"))
             logger.info("Extracting required DLL files...")
             for file_ in zf.namelist():
                 if file_.startswith("natives"):
                     zf.extract(file_, os.path.join(self.minecraftdir, "bin"))
+            logger.info("Extracting libraries...")
+            for file_ in zf.namelist():
+                if file_.startswith("libraries"):
+                    if not os.path.isdir(os.path.join(self.minecraftdir, *file_.split("/")[:-1])):
+                        os.makedirs(os.path.join(self.minecraftdir, *file_.split("/")[:-1]), exist_ok=True)
+                    zf.extract(file_, self.minecraftdir)
             messagebox.showinfo("Success", "The version was successfully imported. Restart AP Launcher to see changes.")
             zf.close()
             return
@@ -512,7 +542,7 @@ class App:
                     durl = asset["browser_download_url"]
                     break
             if durl is None:
-                return False
+                return
             if not os.path.isdir("update"):
                 os.mkdir("update")
             urlretrieve(url=durl, filename="update/update.zip")
@@ -532,20 +562,16 @@ class App:
                     f2.close()
             if hash1.hexdigest() != hash2.hexdigest():
                 logger.info("Update found.")
-                return True
-            return False
-        else:
-            return False
-
-    def run_updater(self):
-        if os.path.isfile("APLauncher.exe"):
-            shutil.move("APLauncher.exe", "temp/APLauncher.exe")
-        if os.path.isfile("launcher_process.exe"):
-            shutil.move("launcher_process.exe", "temp/launcher_process.exe")
-        shutil.move("update/APLauncher.exe", "APLauncher.exe")
-        shutil.move("update/launcher_process.exe", "launcher_process.exe")
+                if os.path.isfile("APLauncher.exe"):
+                    os.rename("APLauncher.exe", "APLauncher_old.exe")
+                if os.path.isfile("launcher_process.exe"):
+                    os.rename("launcher_process.exe", "launcher_process_old.exe")
+                shutil.move("update/APLauncher.exe", "APLauncher.exe")
+                shutil.move("update/launcher_process.exe", "launcher_process.exe")
 
 if __name__ == "__main__":
+    if not os.path.isdir("launcher_logs"):
+        os.mkdir("launcher_logs")
     if not os.path.isdir("launcher_logs/gui"):
         os.mkdir("launcher_logs/gui")        
     if os.path.isfile("launcher_logs/gui/latest.log"):
