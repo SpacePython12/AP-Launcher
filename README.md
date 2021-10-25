@@ -1,4 +1,4 @@
-# AP-Launcher
+# AP-Launcher [![downloads](https://img.shields.io/github/downloads/SpacePython12/AP-Launcher/total.svg)](https://github.com/SpacePython12/AP-Launcher/releases/latest) 
 A custom Minecraft launcher coded entirely in python. 
 
 * I am NOT responsible for any punishments given out by your network administrator for downloading this software.
