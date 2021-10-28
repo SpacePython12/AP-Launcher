@@ -162,6 +162,8 @@ def download_assets(assetsdir, assetindex):
 
 def move_natives(mcdir, nativesdir):
     src = os.path.join(mcdir, "bin", "natives")
+    if not os.path.isdir(src):
+        os.makedirs(src, exist_ok=True)
     files = [f for f in os.listdir(src) if os.path.isfile(os.path.join(src, f))]
     for file_ in files:
         if not os.path.isfile(os.path.join(nativesdir, file_)):
@@ -174,7 +176,10 @@ if os.path.isfile("launcher_logs/process/latest.log"):
     num = 1
     while os.path.isfile(f"launcher_logs/process/{time}-{num}.log"):
         num += 1
-    os.rename("launcher_logs/process/latest.log", f"launcher_logs/process/{time}-{num}.log")
+    try:
+        os.rename("launcher_logs/process/latest.log", f"launcher_logs/process/{time}-{num}.log")
+    except:
+        sys.exit()
 fmt = "[%(asctime)s] (Process %(processName)s thread %(threadName)s func %(funcName)s/%(levelname)s): %(message)s"
 logging.basicConfig(filename="launcher_logs/process/latest.log", format=fmt, level=logging.INFO)
 logger = logging.getLogger()
@@ -315,6 +320,10 @@ try:
 except BaseException as e:
     if not type(e).__name__ == "SystemExit":
         logger.error(e, exc_info=True)
+        with open("launcher_logs/error.log", "w") as err:
+            err.write(sys.exc_info())
+            err.close()
         launcherClient.send(b"\xff")
     else:
         launcherClient.send(b"\x00")
+    sys.exit()

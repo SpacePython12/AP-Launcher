@@ -32,7 +32,7 @@ VERSION = "0.10"
 
 def send_error_report(prog, fatal=False):
     try:
-        with open(f"launcher_logs/{prog}/latest.log")as log:
+        with open(f"launcher_logs/error.log")as log:
             tb = log.read()
             tb.replace(getpass.getuser(), "<USER>")
     except FileNotFoundError:
@@ -45,7 +45,7 @@ def send_error_report(prog, fatal=False):
     if messagebox.askyesno("Report issue", f"Would you like to automatically open an issue?"):
         newline = "\n"
         body = f"(insert description of bug here)%0A***%0ALog contents:%0A```%0A{tb.replace(newline, '%0A')}%0A```"
-        url = f"https://github.com/SpacePython12/AP-Launcher/issues/new?body={body}"
+        url = f"https://github.com/SpacePython12/AP-Launcher/issues/new?"
         webbrowser.open(url)
 
 class AboutPage(Frame):
@@ -258,7 +258,7 @@ class App:
     def kill_process(self):
         """Kills the running Minecraft process."""
         try:
-            os.system(f'cmd /C taskkill /FI "WindowTitle eq Minecraft*" /T /F')
+            subprocess.Popen(f'cmd /C taskkill /FI "WindowTitle eq Minecraft*" /T /F')
         except:
             messagebox.showerror("Error", "Unable to stop the process.")
             return
@@ -278,8 +278,8 @@ class App:
         json.dump(self.accounts, open(os.path.join(self.minecraftdir, "launcher_profiles.json"), "w"), indent=2)
         json.dump(self.cache, open("cache.json", "w"), indent=2)
         self.win.withdraw()
-        os.system(f'cmd /C taskkill /IM APLauncher.exe /T /F')
         self.update_version()
+        subprocess.Popen(f'cmd /C taskkill /IM APLauncher.exe /T /F')
         sys.exit()
 
     def get_versions(self):
@@ -518,6 +518,9 @@ class App:
                     zf.extract(file_, os.path.join(self.minecraftdir, "assets"))
             logger.info("Extracting required DLL files...")
             for file_ in zf.namelist():
+                dllpath = os.path.join(self.minecraftdir, "bin", "natives")
+                if not os.path.isdir(dllpath):
+                    os.makedirs(dllpath, exist_ok=True)
                 if file_.startswith("natives"):
                     zf.extract(file_, os.path.join(self.minecraftdir, "bin"))
             logger.info("Extracting libraries...")
@@ -583,7 +586,10 @@ if __name__ == "__main__":
         num = 1
         while os.path.isfile(f"launcher_logs/gui/{time}-{num}.log"):
             num += 1
-        os.rename("launcher_logs/gui/latest.log", f"launcher_logs/gui/{time}-{num}.log")
+        try:
+            os.rename("launcher_logs/gui/latest.log", f"launcher_logs/gui/{time}-{num}.log")
+        except:
+            sys.exit()
     fmt = "[%(asctime)s] (Process %(processName)s thread %(threadName)s func %(funcName)s/%(levelname)s): %(message)s"
     logging.basicConfig(filename="launcher_logs/gui/latest.log", format=fmt, level=logging.INFO)
     logger = logging.getLogger()
@@ -592,6 +598,9 @@ if __name__ == "__main__":
     except BaseException as e:
         messagebox.showerror("Fatal error", "A fatal error has occurred during startup.")
         logger.error(e, exc_info=True)
+        with open("launcher_logs/error.log", "w") as err:
+            err.write(sys.exc_info())
+            err.close()
         send_error_report("gui", fatal=True)
         sys.exit()
     try:
@@ -600,6 +609,9 @@ if __name__ == "__main__":
         if not type(e).__name__ == "SystemExit":
             messagebox.showerror("Fatal error", "A fatal error has occurred during runtime.")
             logger.error(e, exc_info=True)
+            with open("launcher_logs/error.log", "w") as err:
+                err.write(sys.exc_info())
+                err.close()
             send_error_report("gui", fatal=True)
             main.win.destroy()
             sys.exit()
