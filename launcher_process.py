@@ -12,6 +12,8 @@ import shutil
 import datetime
 import logging
 import socket
+import requests
+import traceback
 
 # Base program derived from https://stackoverflow.com/questions/14531917/launch-minecraft-from-command-line-username-and-password-as-prefix
 
@@ -219,8 +221,6 @@ try:
         clientJson = json.load(
             open(os.path.join(mcDir, 'versions', inheritor, f'{inheritor}.json'))
             )
-        gameArgs.extend(clientJson2["arguments"]["game"])
-        gameArgs.extend(clientJson2["arguments"]["jvm"])
         clientJson["libraries"] = clientJson2["libraries"] + clientJson["libraries"]
         clientJson["id"] = clientJson2["id"]
         clientJson["inheritsFrom"] = clientJson2["inheritsFrom"]
@@ -247,14 +247,29 @@ try:
         mainClass = clientJson['mainClass']
     else:
         mainClass = clientJson2['mainClass']
+        try:
+            clientJson["arguments"]["jvm"] = clientJson2["arguments"]["jvm"] + clientJson["arguments"]["jvm"]
+        except:
+            pass
+        try:
+            clientJson["arguments"]["game"].extend(clientJson2["arguments"]["game"])
+        except:
+            pass
+
     versionType = clientJson['type']
     authDatabase = accountJson["accounts"]
     logger.info("Checking for UUID...")
-    uuid = str(uuidlib.uuid4())
-    for key in authDatabase:
-        if authDatabase[key]["minecraftProfile"]["name"] == username:
-            uuid = authDatabase[key]["minecraftProfile"]["id"]
-            break
+    uuid = None
+    try:
+        uuid = requests.get(f"https://mc-heads.net/minecraft/profile/{username}").json()["id"]
+    except:
+        for key in authDatabase:
+            if authDatabase[key]["minecraftProfile"]["name"] == username:
+                uuid = authDatabase[key]["minecraftProfile"]["id"]
+                break
+    if uuid is None:
+        logger.error("Invalid and/or corrupt profile detected.")
+        sys.exit()
     
     logger.info("Debugging...")
     debug(classPath)
@@ -262,48 +277,54 @@ try:
     debug(versionType)
     debug(assetIndex)
 
-    argFilePath = "C://Temp/arguments.txt"
+    argFilePath = "C://Temp/classpath.txt"
 
     with open(argFilePath, "w") as f:
         f.write(classPath)
         f.close()
-    finalJvmArgs = [
-        "title",
-        "APLauncher_process",
-        "&&",
-        javaHome,
-        f'-Djava.library.path={nativesDir}',
-        f'-Djava-args={javaArgs}',
-        '-Dminecraft.launcher.brand=custom-launcher',
-        '-Dminecraft.launcher.version=2.1',
-        '-Dorg.lwjgl.util.DebugLoader=true',
-        '-cp',
-        f'@{argFilePath}',
-        mainClass
-    ]
-    finalJvmArgs = finalJvmArgs + ([i.replace("${library_directory}", os.path.join(mcDir, "libraries")).replace("${classpath_separator}", ";") for i in jvmArgs])
-    finalGameArgs = [
-        '--username',
-        username,
-        '--version',
-        version,
-        '--gameDir',
-        mcDir,
-        '--assetsDir',
-        assetsDir,
-        '--assetIndex',
-        assetIndex,
-        '--uuid',
-        uuid,
-        '--accessToken',
-        accessToken,
-        '--userType',
-        accountType,
-        '--versionType',
-        'release'
-    ]
-    finalArgs = finalJvmArgs + finalGameArgs
-    finalArgs = finalArgs + gameArgs
+    
+    clientJson["arguments"]["jvm"].append(mainClass)
+    preJvmArgs = []
+    for index in range(len(clientJson["arguments"]["jvm"])):
+        if isinstance(clientJson["arguments"]["jvm"][index], dict):
+            should_use = should_use_library(clientJson["arguments"]["jvm"][index])
+            if should_use:
+                if isinstance(clientJson["arguments"]["jvm"][index]["value"], list):
+                    preJvmArgs.extend(clientJson["arguments"]["jvm"][index]["value"])
+                elif isinstance(clientJson["arguments"]["jvm"][index]["value"], str):
+                    preJvmArgs.append(clientJson["arguments"]["jvm"][index]["value"])
+        else:
+            preJvmArgs.append(clientJson["arguments"]["jvm"][index])
+    preGameArgs = []
+    for index in range(len(clientJson["arguments"]["game"])):
+        if isinstance(clientJson["arguments"]["game"][index], dict):
+            pass
+        else:
+            preGameArgs.append(clientJson["arguments"]["game"][index])
+            
+    
+    launchVars = {
+        "auth_player_name": username,
+        "version_name": version,
+        "game_directory": mcDir,
+        "assets_root": assetsDir,
+        "assets_index_name": assetIndex,
+        "auth_uuid": uuid,
+        "auth_access_token": accessToken,
+        "user_type": "mojang",
+        "version_type": clientJson["type"],
+        "natives_directory": nativesDir,
+        "launcher_name": "AP-Launcher",
+        "launcher_version": json.load(open("cache.json"))["launcherVersion"],
+        "library_directory": os.path.join(mcDir, "libraries"),
+        "classpath_separator": os.pathsep,
+        "classpath": f'@{argFilePath}'
+    }
+
+    argList = javaArgs.split() + preJvmArgs + preGameArgs
+    argList.insert(0, javaHome)
+    finalArgs = [arg.replace("$", "").format(**launchVars) for arg in argList]
+
     logger.info("Running the game...")
     sb = subprocess.Popen(finalArgs, 
     shell=True,
@@ -320,9 +341,7 @@ try:
 except BaseException as e:
     if not type(e).__name__ == "SystemExit":
         logger.error(e, exc_info=True)
-        with open("launcher_logs/error.log", "w") as err:
-            err.write(sys.exc_info())
-            err.close()
+        traceback.print_exc(file=open("launcher_logs/error.log", "w"))
         launcherClient.send(b"\xff")
     else:
         launcherClient.send(b"\x00")

@@ -1,4 +1,4 @@
-# AP-Launcher [![downloads](https://img.shields.io/github/downloads/SpacePython12/AP-Launcher/total.svg)](https://github.com/SpacePython12/AP-Launcher/releases/latest) 
+# AP-Launcher
 A custom Minecraft launcher coded entirely in python. 
 
 * I am NOT responsible for any punishments given out by your network administrator for downloading this software.
@@ -13,10 +13,9 @@ You may need to install some libraries, including...
 * Premium accounts are NOT supported.
 
 # Changelog:
-* Fullscreen now added (may be buggy)
-* Fixed the updater (probably still broken...)
-* Updated version file format
-* Re-added the ability to kill the Minecraft process
+* Fullscreen resize bug is fixed.
+* Increased compatibility with modded versions.
+* Added a slider for allocated RAM.
 
 # Installation instructions:
 

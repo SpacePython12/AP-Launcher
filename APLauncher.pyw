@@ -6,6 +6,7 @@ from PIL import ImageTk, Image
 from urllib.request import urlretrieve
 from urllib.error import *
 from zipfile import ZipFile
+import tkinter
 import os
 import json
 import uuid
@@ -27,8 +28,10 @@ import logging
 import socket
 import random
 import platform
+import psutil
+import math
 
-VERSION = "0.10"
+VERSION = "0.11"
 
 def send_error_report(prog, fatal=False):
     try:
@@ -45,7 +48,7 @@ def send_error_report(prog, fatal=False):
     if messagebox.askyesno("Report issue", f"Would you like to automatically open an issue?"):
         newline = "\n"
         body = f"(insert description of bug here)%0A***%0ALog contents:%0A```%0A{tb.replace(newline, '%0A')}%0A```"
-        url = f"https://github.com/SpacePython12/AP-Launcher/issues/new?"
+        url = f"https://github.com/SpacePython12/AP-Launcher/issues/new?body={body}"
         webbrowser.open(url)
 
 class AboutPage(Frame):
@@ -124,7 +127,7 @@ class App:
             os.remove("launcher_process_old.exe")
             logger.info("Update files cleaned up.")
         except:
-            logger.info("No update files found")
+            logger.info("No update files found.")
             pass
         logger.info("Downloading background and icon...")
         try:
@@ -143,24 +146,28 @@ class App:
         self.win.iconphoto(True, self.icon)
         self.background2 = Canvas(self.mainframe, width=self.background.width(), height=self.background.height())
         self.background2.grid(column=0, row=0, sticky="nsew")
-        self.win.bind("<Configure>", lambda e: threading.Thread(None, target=lambda: self.resize_widgets(e)).start())
+        self.background2.bind("<Configure>", lambda e: threading.Thread(None, target=lambda: self.resize_widgets()).start())
         self.versionvar = StringVar()
         self.get_versions()
         logger.info("Reading cache file...")
         try:
             self.cache = json.load(open("cache.json"))
+            self.cache["launcherVersion"] = VERSION
+            json.dump(self.cache, open("cache.json", "w"))
             logger.info("Successfully read cache.")
         except FileNotFoundError:
             self.cache = {
+                    "launcherVersion": VERSION,
                     "username": "",
                     "accessid": {
                         "id": None,
                         "expiresAt": None
                     },
-                    "premium": True,
+                    "premium": False,
                     "selectedVersion": None
                 }
             logger.info("No cache file found.")
+            json.dump(self.cache, open("cache.json", "w"))
         if type(self.cache["selectedVersion"]) is type(list()):
             self.versionvar.set(f'{self.cache["selectedVersion"][0]} ({self.cache["selectedVersion"][1]})')
         elif type(self.cache["selectedVersion"]) is type(None):
@@ -233,14 +240,26 @@ class App:
         java_home = os.path.join(os.getcwd(), "java", [x[1] for x in os.walk("java")][0][0])
         self.profjavadir = LabeledEntry(self.profileframe, "Java Directory: ", f'{java_home}\\bin\\javaw.exe', elength=30)
         self.profjavadir.grid(column=0, row=3, sticky="nsew")
-        self.profjavargs = LabeledEntry(self.profileframe, "JVM Arguments: ", "-Xmx2G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M", elength=50)
-        self.profjavargs.grid(column=0, row=4, sticky="nsew")
+        self.jvmargs = "-Xmx2048M"
+        self.allocramraw = re.search(r"\-Xmx[0-9]+[MGT]", self.jvmargs).group(0)[4:]
+        if self.allocramraw[-1] == "M":
+            self.scale = 0
+        elif self.allocramraw[-1] == "G":
+            self.scale = 1
+        elif self.allocramraw[-1] == "T":
+            self.scale = 2
+        self.allocram = DoubleVar(self.win)
+        self.allocram.set((float(self.allocramraw[:-1]) * (1024**(self.scale-1))))
+        self.allocramlabel = Label(self.profileframe, text=f"Allocated RAM: {self.allocram.get()} GB")
+        self.allocramlabel.grid(column=0, row=4, sticky="nsew")
+        self.allocramslider = tkinter.Scale(self.profileframe, from_=1.0 * (1024**(self.scale)), to=int((math.ceil(math.log(psutil.virtual_memory().total, 1024)))) * (1024**(self.scale)), resolution=0.1, showvalue=False, orient="horizontal", variable=self.allocram, command=self.update_alloc_ram, length=200)
+        self.allocramslider.grid(column=0, row=5, sticky="nw")
         self.profsave = Button(self.profileframe, text="Save")
-        self.profsave.grid(column=0, row=5, sticky="w")
+        self.profsave.grid(column=0, row=6, sticky="w")
         self.proftrans = Label(self.profileframe, text="OR")
-        self.proftrans.grid(column=0, row=6, sticky="w")
+        self.proftrans.grid(column=0, row=7, sticky="w")
         self.profadd = Button(self.profileframe, text="Import new version", command=lambda: self.open_install_archive())
-        self.profadd.grid(column=0, row=7, sticky="w")
+        self.profadd.grid(column=0, row=8, sticky="w")
         self.update_profiles(self.versionvar.get())
         self.profilelist.bind("<<ComboboxSelected>>", lambda x: self.update_profiles(self.versionvar.get()))
         self.aboutpage = AboutPage(self.win)
@@ -248,12 +267,30 @@ class App:
         self.tabs.add(self.aboutpage, text="About")
         logger.info("Successfully initiated window.")
 
-    def resize_widgets(self, e, override=False):
-        if ((self.win.winfo_width() != e.width) and (self.win.winfo_height() != e.height)) or override:
-            self.bgfile = Image.open("assets/background.png")
-            self.bgfile = self.bgfile.resize((e.width, e.height), Image.ANTIALIAS)
-            self.background = ImageTk.PhotoImage(self.bgfile)
-            self.background2.create_image(0, 0, image=self.background, anchor="nw")
+    def update_alloc_ram(self, e):
+        self.allocramlabel.config(text=f"Allocated RAM: {self.allocram.get()/(1024**(self.scale))} GB")
+        oldarg = re.search(r"\-Xmx[0-9]+[MGT]", self.jvmargs).group(0)
+        if self.scale == 0:
+            suffix = "M"
+        elif self.scale == 1:
+            suffix = "G"
+        elif self.scale == 2:
+            suffix = "T"
+        if self.allocram.get()/(1024**(self.scale-1)) % 1024 == 0:
+            if suffix == "M":
+                suffix = "G"
+            elif suffix == "G":
+                suffix = "T"
+            self.jvmargs = self.jvmargs.replace(oldarg, f"-Xmx{int(self.allocram.get()/(1024**(self.scale)))}{suffix}")
+        else:
+            self.jvmargs = self.jvmargs.replace(oldarg, f"-Xmx{int(self.allocram.get()/(1024**(self.scale-1)))}{suffix}")
+    
+    def resize_widgets(self):
+        self.bgfile = Image.open("assets/background.png")
+        self.bgfile = self.bgfile.resize((self.background2.winfo_width(), self.background2.winfo_height()), Image.ANTIALIAS)
+        self.background = ImageTk.PhotoImage(self.bgfile)
+        self.background2.create_image(0, 0, image=self.background, anchor="nw")
+        
 
     def kill_process(self):
         """Kills the running Minecraft process."""
@@ -330,14 +367,10 @@ class App:
             self.profjavadir.set(self.accounts["profiles"][self.nametoprofile[name]]["javaDir"])
         except:
             pass
-        try:
-            self.profjavargs.set(self.accounts["profiles"][self.nametoprofile[name]]["javaArgs"])
-        except:
-            pass
 
     def save_profile(self, name):
         """Saves the selected profile."""
-        self.accounts["profiles"][self.nametoprofile[name]] = {"name": self.profname.get(), "type": "custom", "lastVersionId": self.accounts["profiles"][self.nametoprofile[name]]["lastVersionId"], "gameDir": self.profgamedir.get(), "javaDir": self.profjavadir.get(), "javaArgs": self.profjavargs.get()}
+        self.accounts["profiles"][self.nametoprofile[name]] = {"name": self.profname.get(), "type": "custom", "lastVersionId": self.accounts["profiles"][self.nametoprofile[name]]["lastVersionId"], "gameDir": self.profgamedir.get(), "javaDir": self.profjavadir.get(), "javaArgs": self.jvmargs}
         self.get_versions()
         self.versionlist["values"] = self.versions
         self.profilelist["values"] = self.versions
@@ -404,7 +437,7 @@ class App:
         "-javaHome",
         self.profjavadir.get(),
         "-javaArgs",
-        self.profjavargs.get(),
+        self.jvmargs,
         "-launcherServerSocket",
         str(sock)
         ]
@@ -598,9 +631,7 @@ if __name__ == "__main__":
     except BaseException as e:
         messagebox.showerror("Fatal error", "A fatal error has occurred during startup.")
         logger.error(e, exc_info=True)
-        with open("launcher_logs/error.log", "w") as err:
-            err.write(sys.exc_info())
-            err.close()
+        traceback.print_exc(file=open("launcher_logs/error.log", "w"))
         send_error_report("gui", fatal=True)
         sys.exit()
     try:
@@ -609,9 +640,7 @@ if __name__ == "__main__":
         if not type(e).__name__ == "SystemExit":
             messagebox.showerror("Fatal error", "A fatal error has occurred during runtime.")
             logger.error(e, exc_info=True)
-            with open("launcher_logs/error.log", "w") as err:
-                err.write(sys.exc_info())
-                err.close()
+            traceback.print_exc(file=open("launcher_logs/error.log", "w"))
             send_error_report("gui", fatal=True)
             main.win.destroy()
             sys.exit()
