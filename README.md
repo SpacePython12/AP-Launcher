@@ -12,6 +12,8 @@ You may need to install some libraries, including...
 
 * Premium accounts are NOT supported.
 
+> Discord: https://discord.gg/3HYD8CRgMh
+
 # Changelog:
 * Fullscreen resize bug is fixed.
 * Increased compatibility with modded versions.
