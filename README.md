@@ -20,9 +20,9 @@ You may need to install some libraries, including...
 * Added a slider for allocated RAM.
 * By default, premium mode is off.
 * Improved traceback logging to `error.log`.
-* Improved compatibility with custom jvm and game arguments defined in `<version>.json`.
+* Improved compatibility with custom JVM and game arguments defined in `<version>.json`.
 * Added the ability to update the UUID of the player if they have a premium account.
-* Restructured argument feeding to java.
+* Restructured argument feeding to the Java executable.
 
 # Installation instructions:
 
