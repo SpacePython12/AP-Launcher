@@ -18,6 +18,11 @@ You may need to install some libraries, including...
 * Fullscreen resize bug is fixed.
 * Increased compatibility with modded versions.
 * Added a slider for allocated RAM.
+* By default, premium mode is off.
+* Improved traceback logging to `error.log`.
+* Improved compatibility with custom jvm and game arguments defined in `<version>.json`.
+* Added the ability to update the UUID of the player if they have a premium account.
+* Restructured argument feeding to java.
 
 # Installation instructions:
 
