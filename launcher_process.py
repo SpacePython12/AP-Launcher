@@ -15,6 +15,32 @@ import socket
 import requests
 import traceback
 
+# If anyone edits this file, you do NOT, under ANY circumstances, remove this code.
+LOG4J_CONFIG = """<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="SysOut" target="SYSTEM_OUT">
+            <LegacyXMLLayout />
+        </Console>
+        <RollingRandomAccessFile name="File" fileName="logs/latest.log" filePattern="logs/%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg{nolookups}%n" />
+            <Policies>
+                <TimeBasedTriggeringPolicy />
+                <OnStartupTriggeringPolicy />
+            </Policies>
+        </RollingRandomAccessFile>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <filters>
+                <MarkerFilter marker="NETWORK_PACKETS" onMatch="DENY" onMismatch="NEUTRAL" />
+            </filters>
+            <AppenderRef ref="SysOut"/>
+            <AppenderRef ref="File"/>
+        </Root>
+    </Loggers>
+</Configuration>"""
+
 # Base program derived from https://stackoverflow.com/questions/14531917/launch-minecraft-from-command-line-username-and-password-as-prefix
 
 def debug(str):
@@ -283,6 +309,12 @@ try:
         f.write(classPath)
         f.close()
     
+    logConfigPath = os.path.join(os.getcwd(), "temp", "client-1.12.xml")
+    with open(logConfigPath, "w") as logConfig:
+        logConfig.write(LOG4J_CONFIG)
+        logConfig.close()
+
+    clientJson["arguments"]["jvm"].insert(0, f'-Dlog4j.configurationFile="{logConfigPath}"')
     clientJson["arguments"]["jvm"].append(mainClass)
     preJvmArgs = []
     for index in range(len(clientJson["arguments"]["jvm"])):
