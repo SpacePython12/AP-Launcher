@@ -15,21 +15,14 @@ You may need to install some libraries, including...
 > Discord: https://discord.gg/3HYD8CRgMh
 
 # Changelog:
-* Fullscreen resize bug is fixed.
-* Increased compatibility with modded versions.
-* Added a slider for allocated RAM.
-* By default, premium mode is off.
-* Improved traceback logging to `error.log`.
-* Improved compatibility with custom JVM and game arguments defined in `<version>.json`.
-* Added the ability to update the UUID of the player if they have a premium account.
-* Restructured argument feeding to the Java executable.
+* Completely rewrote `launcher_process.py` to avoid future issues.
+* Added themes to the UI.
+* I'll add more here when I find more changes I made - I added a lot here.
 
 # Installation instructions:
 
 - Download `APLauncher.Installer.exe` from a release and run it.
 - The installer will ask you for your username and UUID in 2 prompts.
-      - If you have a premium Minecraft account, it is highly advised you enter that account's details, if you want to play in premium mode in the future.
-      - You can find an account's UUID [here](https://mcuuid.net/).
       - If you don't have a premium account, you can make up a username and UUID (generate a UUID [here](https://www.uuidgenerator.net/))
 - Once the installer has finished, navigate to `C:\\Users\<your user>\.aplauncher` and run `APLauncher.exe`.
 - If you want to add a version follow the steps below:
