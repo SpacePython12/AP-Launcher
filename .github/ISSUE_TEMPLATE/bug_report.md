@@ -1,6 +1,7 @@
 ---
 Name: Bug report
 About: Create a report to help us improve
+
 ---
 
 **Fill out the sections below.**
