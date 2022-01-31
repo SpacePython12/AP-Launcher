@@ -1,380 +1,285 @@
-import json
 import os
-import sys
-import platform
-from pathlib import Path
 import subprocess
-import threading
-import uuid as uuidlib
-from urllib.request import urlretrieve
-from urllib.error import HTTPError
-import shutil
+import sys
 import datetime
 import logging
-import socket
+import platform
 import requests
-import traceback
+import time
+import re
+import json
+import argparse
+import shutil
+import ruamel.std.zipfile as zipfile
+import hashlib
 
-# If anyone edits this file, you do NOT, under ANY circumstances, remove this code.
-LOG4J_CONFIG = """<?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="WARN">
-    <Appenders>
-        <Console name="SysOut" target="SYSTEM_OUT">
-            <LegacyXMLLayout />
-        </Console>
-        <RollingRandomAccessFile name="File" fileName="logs/latest.log" filePattern="logs/%d{yyyy-MM-dd}-%i.log.gz">
-            <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg{nolookups}%n" />
-            <Policies>
-                <TimeBasedTriggeringPolicy />
-                <OnStartupTriggeringPolicy />
-            </Policies>
-        </RollingRandomAccessFile>
-    </Appenders>
-    <Loggers>
-        <Root level="info">
-            <filters>
-                <MarkerFilter marker="NETWORK_PACKETS" onMatch="DENY" onMismatch="NEUTRAL" />
-            </filters>
-            <AppenderRef ref="SysOut"/>
-            <AppenderRef ref="File"/>
-        </Root>
-    </Loggers>
-</Configuration>"""
+if __name__ == "__main__":
+    if not os.path.isdir("launcher_logs/process"):
+        os.mkdir("launcher_logs/process")
+    if os.path.isfile("launcher_logs/process/latest.log"):
+        time = datetime.datetime.fromtimestamp(os.path.getctime("launcher_logs/process/latest.log")).strftime("%Y-%m-%d")
+        num = 1
+        while os.path.isfile(f"launcher_logs/process/{time}-{num}.log"):
+            num += 1
+        try:
+            os.rename("launcher_logs/process/latest.log", f"launcher_logs/process/{time}-{num}.log")
+        except:
+            sys.exit()
+    stream = logging.StreamHandler(sys.stdout)
+    stream.setFormatter(logging.Formatter("[%(asctime)s] [Launcher Interface/%(levelname)s]: %(message)s"))
+    logging.basicConfig(format="[%(asctime)s] (Process %(processName)s thread %(threadName)s func %(funcName)s/%(levelname)s): %(message)s", handlers=[logging.FileHandler("launcher_logs/process/latest.log"), stream], level=logging.INFO)
+    logger = logging.getLogger()
 
-# Base program derived from https://stackoverflow.com/questions/14531917/launch-minecraft-from-command-line-username-and-password-as-prefix
+def download(url, path, mode="w"):
+    with requests.get(url, allow_redirects=False, stream=True) as res:
+        with open(path, mode) as resfile:
+            for chunk in res.iter_content(8192):
+                resfile.write(bytes(chunk))
+            resfile.close()
 
-def debug(str):
-    """Debug output"""
-    if os.getenv('DEBUG') != None:
-        sys.stdout.write(str)
-
-def get_natives_string(lib):
-    """[Gets the natives_string to prepend to the jar if it exists. If there is nothing native specific, returns and empty string]"""
-    arch = ""
-    if platform.architecture()[0] == "64bit":
-        arch = "64"
-    elif platform.architecture()[0] == "32bit":
-        arch = "32"
-    else:
-        raise Exception("Architecture not supported; why are you even running it here?")
-
-    nativesFile=""
-    if not "natives" in lib:
-        return nativesFile
-
-    if "windows" in lib["natives"] and platform.system() == 'Windows':
-        nativesFile = lib["natives"]["windows"].replace("${arch}", arch)
-    elif "osx" in lib["natives"] and platform.system() == 'Darwin':
-        nativesFile = lib["natives"]["osx"].replace("${arch}", arch)
-    elif "linux" in lib["natives"] and platform.system() == "Linux":
-        nativesFile = lib["natives"]["linux"].replace("${arch}", arch)
-    else:
-        raise Exception("Platform not supported")
-
-    return nativesFile
-
-def should_use_library(lib):
-    """[Parses "rule" subpropery of library object, testing to see if should be included]"""
-    def rule_says_yes(rule):
-        useLib = None
+def should_use_library(lib, features={}):
+    def rule_says_yes(rule, features={}):
+        uselib = None
 
         if rule["action"] == "allow":
-            useLib = False
+            uselib = False
         elif rule["action"] == "disallow":
-            useLib = True
+            uselib = True
 
-        if "os" in rule:
+        if "os" in rule.keys():
             for key, value in rule["os"].items():
                 os = platform.system()
                 if key == "name":
                     if value == "windows" and os != 'Windows':
-                        return useLib
+                        return uselib
                     elif value == "osx" and os != 'Darwin':
-                        return useLib
+                        return uselib
                     elif value == "linux" and os != 'Linux':
-                        return useLib
+                        return uselib
                 elif key == "arch":
                     if value == "x86" and platform.architecture()[0] != "32bit":
-                        return useLib
+                        return uselib
+        elif "features" in rule.keys():
+            return False
 
-        return not useLib
+        return not uselib
 
-    if not "rules" in lib:
+    if not "rules" in lib.keys():
         return True
 
-    shouldUseLibrary = False
+    shoulduselibrary = False
     for i in lib["rules"]:
         if rule_says_yes(i):
             return True
 
-    return shouldUseLibrary
+    return shoulduselibrary
 
-def get_classpath(lib, mcDir, inheritor):
-    """[Get string of all libraries to add to java classpath]"""
+def get_classpath(version, mc_dir):
     cp = []
-
-    for i in lib["libraries"]:
-        if not should_use_library(i):
-            continue
-
-        libDomain, libName, libVersion = i["name"].split(":")
-        jarPath = os.path.join(mcDir, "libraries", *
-                               libDomain.split('.'), libName, libVersion)
-
-        native = get_natives_string(i)
-        jarFile = libName + "-" + libVersion + ".jar"
-        if native != "":
-            jarFile = libName + "-" + libVersion + "-" + native + ".jar"
-
-        cp.append(os.path.join(jarPath, jarFile))
-
-    cp.append(os.path.join(mcDir, "versions", lib["id"], f'{lib["id"]}.jar'))
-    if not inheritor is None:
-        cp.append(os.path.join(mcDir, "versions", lib["inheritsFrom"], f'{lib["inheritsFrom"]}.jar'))
-
+    #os = {"Windows": "windows", "Darwin": "osx", "Linux": "linux"}[platform.system()]
+    os_verbose = {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}[platform.system()]
+    arch = {"32bit": "32", "64bit": "64"}[platform.architecture()[0]]
+    logger.info("Managing libraries...")
+    for lib in version["libraries"]:
+        if "rules" in lib.keys():
+            if not should_use_library(lib):
+                continue
+        lib_domain, lib_name, lib_version = lib["name"].split(":")
+        jar_file = lib_name + "-" + lib_version + ".jar"
+        base_url = "https://libraries.minecraft.net/"
+        if "url" in lib.keys():
+            base_url = lib["url"]
+        if "natives" in lib.keys():
+            if os_verbose in lib["natives"].keys():
+                blob = lib["downloads"]["classifiers"][lib["natives"][os_verbose].replace("${arch}", arch)]
+            else:
+                blob = lib["downloads"]["artifact"]
+        elif "downloads" in lib.keys():
+            blob = lib["downloads"]["artifact"]
+        else:
+            path = f"/{lib_domain.replace('.', '/')}/{lib_name}/{lib_version}/{jar_file}"
+            blob = {
+                "path": path,
+                "url": f"{base_url}{path.lstrip('/')}"
+            }
+        if not os.path.exists(os.path.join(mc_dir, "versions", version["id"], "natives")):
+            os.mkdir(os.path.join(mc_dir, "versions", version["id"], "natives"))
+        if not os.path.exists(os.path.join(mc_dir, "libraries", *blob["path"].split("/"))):
+            os.makedirs(os.path.join(mc_dir, "libraries", *blob["path"].split("/")[:-1]), exist_ok=True)
+        try:   
+            if not os.path.exists(os.path.join(mc_dir, "libraries", *blob["path"].split("/"))):
+                download(blob["url"], os.path.join(mc_dir, "libraries", *blob["path"].split("/")), mode="wb")
+        except:
+            logger.error(f"FAILURE downloading {jar_file}. The game may not function properly.")
+        if lib_name == "log4j-core":
+            try:
+                zipfile.delete_from_zip_file(os.path.join(mc_dir, "libraries", *blob["path"].split("/")), file_names="JndiLookup.class")
+            except:
+                pass
+        cp.append(os.path.join(mc_dir, "libraries", *blob["path"].split("/")))
+        shutil.copyfile(os.path.join(mc_dir, "libraries", *blob["path"].split("/")), os.path.join(mc_dir, "versions", version["id"], "natives", jar_file))
+    cp.append(os.path.join(mc_dir, "versions", version["id"], f'{version["id"]}.jar'))
+    shutil.copyfile(os.path.join(mc_dir, "versions", version["id"], f'{version["id"]}.jar'), os.path.join(mc_dir, "versions", version["id"], "natives", f'{version["id"]}.jar'))
     return os.pathsep.join(cp)
 
-def move_libraries(mcdir, dest, libjson, cp, version):
-    """Moves libraries to natives path"""
-    index = 0
-    if not os.path.isdir(dest):
-        os.mkdir(dest)
-    shutil.copyfile(f"{mcDir}/versions/{version}/{version}.jar", os.path.join(dest, f"{version}.jar"))
-    for c in cp.split(";"):
-        name = c.split("\\")[-1]
-        logger.info(f"Checking if {name} is cached...")
-        if os.path.isfile(os.path.join(dest, name)):
-            logger.info(f"{name} is already cached, no action needed.")
-        elif not os.path.isfile(os.path.join(dest, name)) and os.path.isfile(c):
-            logger.info(f"{name} is not cached, however it is in the library path.")
-            shutil.copyfile(os.path.join(mcDir, "libraries", c.replace("\\", "/")), os.path.join(dest, name))
-        elif not os.path.isfile(c) and not os.path.isfile(os.path.join(dest, name)):
-            logger.info(f"{name} is not cached and is not in libraries folder, trying to download...")
-            os.makedirs(os.path.join(mcDir, "libraries", *c.replace(f"{mcDir}\\libraries\\", "").split("\\")[:-1]), exist_ok=True)
-            url = "https://libraries.minecraft.net/" + c.replace(f"{mcDir}\\libraries\\", "").replace("\\", "/")
-            try:
-                urlretrieve(url, os.path.join(mcDir, "libraries", c.replace("\\", "/")))
-            except:
-                logger.error(f"Unable to download {name}, this could break the game.")
-            else:
-                shutil.copyfile(os.path.join(mcDir, "libraries", c.replace("\\", "/")), os.path.join(dest, name))
+def download_assets(assets, assets_dir):
+    index = 1
+    total = len([assets["objects"][asset]["hash"] for asset in list(assets["objects"].keys())])
+    for hash in [assets["objects"][asset]["hash"] for asset in list(assets["objects"].keys())]:
+        if not os.path.exists(os.path.join(assets_dir, "objects", hash[:2])):
+            os.mkdir(os.path.join(assets_dir, "objects", hash[:2]))
+        if not os.path.exists(os.path.join(assets_dir, "objects", hash[:2], hash)):
+            download(f"https://resources.download.minecraft.net/{hash[:2]}/{hash}", os.path.join(assets_dir, "objects", hash[:2], hash))
+            time.sleep(0.1)
         index += 1
 
-def download_asset(hash_, failedlist):
+def update_files(version, mc_dir, assets):
     try:
-        urlretrieve(url=f"https://resources.download.minecraft.net/{hash_[:2]}/{hash_}", filename=os.path.join(assetsDir, f"objects/{hash_[:2]}/{hash_}"))
-        logger.info(f"Trying to download resource with hash {hash_}")
+        if hashlib.sha1(open(os.path.join(mc_dir, "assets", "indexes", f'{version["assets"]}.json')).read()).hexdigest() != version["assetIndex"]["client"]["sha1"]:
+            logger.info("Downloading asset index...")
+            download(version["assetIndex"]["url"], os.path.join(mc_dir, "assets", "indexes", f'{version["assets"]}.json'))
     except:
-        logger.warning(f"Resource with hash {hash_} could not be downloaded, presumably due to rate limits.")
-        failedlist.append(hash_)
-
-def download_assets(assetsdir, assetindex):
-    failedlist = []
+        logger.warning("Unable to download asset index.")
+    logger.info("Updating assets...")
+    download_assets(assets, os.path.join(argv["mcDir"], "assets"))
     try:
-        urlretrieve("https://resources.download.minecraft.net")
+        if hashlib.sha1(open(os.path.join(mc_dir, "versions", version["id"], f'{version["id"]}.jar'), "rb").read()).hexdigest() != version["downloads"]["client"]["sha1"]:
+            logger.info("Updating main jar...")
+            download(version["downloads"]["client"]["url"], os.path.join(mc_dir, "versions", version["id"], f'{version["id"]}.jar'))
     except:
-        logger.warning("Cannot contact assets server.")
-        return
-    for hash_ in [assetindex["objects"][asset]["hash"] for asset in list(assetindex["objects"].keys())]:
-        if not os.path.isdir(os.path.join(assetsDir, f"objects/{hash_[:2]}")):
-            os.mkdir(os.path.join(assetsDir, f"objects/{hash_[:2]}"))
-        if not os.path.isfile(os.path.join(assetsDir, f"objects/{hash_[:2]}/{hash_}")):
-            thread = threading.Thread(None, lambda: download_asset(hash_, failedlist))
-            thread.start()
-    for hash_ in failedlist:
-        if not os.path.isdir(os.path.join(assetsDir, f"objects/{hash_[:2]}")):
-            os.mkdir(os.path.join(assetsDir, f"objects/{hash_[:2]}"))
-        if not os.path.isfile(os.path.join(assetsDir, f"objects/{hash_[:2]}/{hash_}")):
-            thread = threading.Thread(None, lambda: download_asset(hash_, failedlist))
-            thread.start()
-
-def move_natives(mcdir, nativesdir):
-    src = os.path.join(mcdir, "bin", "natives")
-    if not os.path.isdir(src):
-        os.makedirs(src, exist_ok=True)
-    files = [f for f in os.listdir(src) if os.path.isfile(os.path.join(src, f))]
-    for file_ in files:
-        if not os.path.isfile(os.path.join(nativesdir, file_)):
-            shutil.copyfile(os.path.join(mcdir, "bin", "natives", file_), os.path.join(nativesdir, file_))
-
-if not os.path.isdir("launcher_logs/process"):
-    os.mkdir("launcher_logs/process")
-if os.path.isfile("launcher_logs/process/latest.log"):
-    time = datetime.datetime.fromtimestamp(os.path.getctime("launcher_logs/process/latest.log")).strftime("%Y-%m-%d")
-    num = 1
-    while os.path.isfile(f"launcher_logs/process/{time}-{num}.log"):
-        num += 1
-    try:
-        os.rename("launcher_logs/process/latest.log", f"launcher_logs/process/{time}-{num}.log")
-    except:
-        sys.exit()
-fmt = "[%(asctime)s] (Process %(processName)s thread %(threadName)s func %(funcName)s/%(levelname)s): %(message)s"
-logging.basicConfig(filename="launcher_logs/process/latest.log", format=fmt, level=logging.INFO)
-logger = logging.getLogger()
-
-try:
-    username = sys.argv[sys.argv.index("-username")+1]
-    version = sys.argv[sys.argv.index("-version")+1]
-    accessToken = sys.argv[sys.argv.index("-accessToken")+1]
-    accountType = sys.argv[sys.argv.index("-accountType")+1]
-    mcDir = sys.argv[sys.argv.index("-mcDir")+1]
-    javaHome = sys.argv[sys.argv.index("-javaHome")+1]
-    javaArgs = sys.argv[sys.argv.index("-javaArgs")+1]
-    sock = int(sys.argv[sys.argv.index("-launcherServerSocket")+1])
-except ValueError:
-    sys.stdout.write("Invalid syntax.")
-    sys.exit()
-
-launcherClient = socket.socket()
-launcherClient.connect(("localhost", sock))
-
-try:
-    accountJson = json.load(
-        open(os.path.join(mcDir, "launcher_accounts.json"))
-        )
-    clientJson = json.load(
-        open(os.path.join(mcDir, 'versions', version, f'{version}.json'))
-        )
-    gameArgs = []
-    jvmArgs = []
-    try:
-        inheritor = clientJson["inheritsFrom"]
-    except KeyError:
-        inheritor = None
-    else:
-        logger.info(f"Version is modified, inheriting from {inheritor}.")
-        clientJson2 = clientJson
-        clientJson = json.load(
-            open(os.path.join(mcDir, 'versions', inheritor, f'{inheritor}.json'))
-            )
-        clientJson["libraries"] = clientJson2["libraries"] + clientJson["libraries"]
-        clientJson["id"] = clientJson2["id"]
-        clientJson["inheritsFrom"] = clientJson2["inheritsFrom"]
-    assetJson = json.load(
-        open(os.path.join(mcDir, 'assets/indexes', f'{clientJson["assets"]}.json'))
-        )
-    assetsDir = os.path.join(mcDir, 'assets')
-    logger.info("Downloading assets...")
-    download_assets(assetsDir, assetJson)
-
-    classPath = get_classpath(clientJson, mcDir, inheritor)
-
-    try:
-        nativesDir = os.path.join(mcDir, 'versions', version, 'natives')
-    except FileNotFoundError:
-        os.mkdir(os.path.join(mcDir, 'versions', version, 'natives'))
-        nativesDir = os.path.join(mcDir, 'versions', version, 'natives')
-    logger.info("Moving libraries to natives folder...")
-    move_libraries(mcDir, nativesDir, clientJson["libraries"], classPath, version)
-    logger.info("Moving DLLs to natives folder...")
-    move_natives(mcDir, nativesDir)
-    assetIndex = clientJson['assetIndex']['id']
-    if inheritor is None:
-        mainClass = clientJson['mainClass']
-    else:
-        mainClass = clientJson2['mainClass']
-        try:
-            clientJson["arguments"]["jvm"] = clientJson2["arguments"]["jvm"] + clientJson["arguments"]["jvm"]
-        except:
-            pass
-        try:
-            clientJson["arguments"]["game"].extend(clientJson2["arguments"]["game"])
-        except:
-            pass
-
-    versionType = clientJson['type']
-    authDatabase = accountJson["accounts"]
-    logger.info("Checking for UUID...")
-    uuid = None
-    try:
-        uuid = requests.get(f"https://mc-heads.net/minecraft/profile/{username}").json()["id"]
-    except:
-        for key in authDatabase:
-            if authDatabase[key]["minecraftProfile"]["name"] == username:
-                uuid = authDatabase[key]["minecraftProfile"]["id"]
-                break
-    if uuid is None:
-        logger.error("Invalid and/or corrupt profile detected.")
-        sys.exit()
-    
-    logger.info("Debugging...")
-    debug(classPath)
-    debug(mainClass)
-    debug(versionType)
-    debug(assetIndex)
-
-    argFilePath = "C://Temp/classpath.txt"
-
-    with open(argFilePath, "w") as f:
-        f.write(classPath)
-        f.close()
-    
-    logConfigPath = os.path.join(os.getcwd(), "temp", "client-1.12.xml")
-    with open(logConfigPath, "w") as logConfig:
-        logConfig.write(LOG4J_CONFIG)
-        logConfig.close()
-
-    clientJson["arguments"]["jvm"].insert(0, f'-Dlog4j.configurationFile="{logConfigPath}"')
-    clientJson["arguments"]["jvm"].append(mainClass)
-    preJvmArgs = []
-    for index in range(len(clientJson["arguments"]["jvm"])):
-        if isinstance(clientJson["arguments"]["jvm"][index], dict):
-            should_use = should_use_library(clientJson["arguments"]["jvm"][index])
-            if should_use:
-                if isinstance(clientJson["arguments"]["jvm"][index]["value"], list):
-                    preJvmArgs.extend(clientJson["arguments"]["jvm"][index]["value"])
-                elif isinstance(clientJson["arguments"]["jvm"][index]["value"], str):
-                    preJvmArgs.append(clientJson["arguments"]["jvm"][index]["value"])
+        if os.path.exists(os.path.join(mc_dir, "versions", version["id"], f'{version["id"]}.jar')):
+            logger.warning("Unable to update main jar. However, it already exists, hope it's good.")
         else:
-            preJvmArgs.append(clientJson["arguments"]["jvm"][index])
-    preGameArgs = []
-    for index in range(len(clientJson["arguments"]["game"])):
-        if isinstance(clientJson["arguments"]["game"][index], dict):
-            pass
+            logger.error("Unable to download main jar. The game cannot run.")
+            sys.exit()
+    logger.info("Downloading libraries...")
+    cp = get_classpath(version, mc_dir)
+    return cp
+
+def get_info_files(argv):
+    accounts = json.load(open(os.path.join(argv["mcDir"], "launcher_accounts.json")))
+    logger.info("\tRead launcher_accounts.json.")
+    version = json.load(open(os.path.join(argv["mcDir"], "versions", argv["version"], f'{argv["version"]}.json')))
+    if "inheritsFrom" in version.keys():
+        parentversion = json.load(open(os.path.join(argv["mcDir"], "versions", version["inheritsFrom"], f'{version["inheritsFrom"]}.json')))
+        version["assets"] = parentversion["assets"]
+        version["libraries"] = version["libraries"] + parentversion["libraries"]
+        if "arguments" in version.keys():
+            if "game" in version["arguments"].keys():
+                version["arguments"]["game"] = parentversion["arguments"]["game"] + version["arguments"]["game"]
+            if "jvm" in version["arguments"].keys():
+                version["arguments"]["jvm"] = version["arguments"]["jvm"] + parentversion["arguments"]["jvm"]
+        elif "minecraftArguments" in version.keys():
+            version["minecraftArguments"] = parentversion["minecraftArguments"] + " " + version["minecraftArguments"]
+        if "arguments" in parentversion.keys():
+            version["arguments"] = {}
+            if "game" in parentversion["arguments"].keys():
+                version["arguments"]["game"] = parentversion["arguments"]["game"]
+            if "jvm" in parentversion["arguments"].keys():
+                version["arguments"]["jvm"] = parentversion["arguments"]["jvm"]
+        elif "minecraftArguments" in parentversion.keys():
+            version["minecraftArguments"] = parentversion["minecraftArguments"]
+    logger.info("\tRead " + f'{argv["version"]}.json' + ".")
+    assets = json.load(open(os.path.join(argv["mcDir"], "assets", "indexes", f'{version["assets"]}.json')))
+    logger.info("\tRead " + f'{version["assets"]}.json' + ".")
+    account = [accounts["accounts"][localid] for localid in accounts["accounts"].keys() if accounts["accounts"][localid]["minecraftProfile"]["name"] == argv["username"]][0]
+    return version, account, assets
+
+def get_args(version, argv, account, cp):
+    args = [argv["javaHome"]]
+    args.extend(argv["javaArgs"])
+    if "arguments" in version.keys():
+        if "jvm" in version["arguments"].keys():
+            for jvmarg in version["arguments"]["jvm"]:
+                if isinstance(jvmarg, str):
+                    args.append(jvmarg)
+                elif isinstance(jvmarg, dict):
+                    if should_use_library(jvmarg):
+                        if isinstance(jvmarg["value"], list):
+                            args.extend(jvmarg["value"])
+                        elif isinstance(jvmarg["value"], str):
+                            args.append(jvmarg["value"])
+            args.append(version["mainClass"])
         else:
-            preGameArgs.append(clientJson["arguments"]["game"][index])
-            
-    
-    launchVars = {
-        "auth_player_name": username,
-        "version_name": version,
-        "game_directory": mcDir,
-        "assets_root": assetsDir,
-        "assets_index_name": assetIndex,
-        "auth_uuid": uuid,
-        "auth_access_token": accessToken,
-        "user_type": "mojang",
-        "version_type": clientJson["type"],
-        "natives_directory": nativesDir,
+            args.extend(["-Djava.library.path=${natives_directory}", "-Dminecraft.launcher.brand=${launcher_name}", "-Dminecraft.launcher.version=${launcher_version}", "-cp", "${classpath}", version["mainClass"]])
+        if "game" in version["arguments"].keys():
+            for gamearg in version["arguments"]["game"]:
+                if isinstance(gamearg, str):
+                    args.append(gamearg)
+                elif isinstance(gamearg, dict):
+                    if should_use_library(gamearg):
+                        if isinstance(gamearg["value"], list):
+                            args.extend(gamearg["value"])
+                        elif isinstance(gamearg["value"], str):
+                            args.append(gamearg["value"])
+        elif "minecraftArguments" in version.keys():
+            args.extend(version["minecraftArguments"].split(" "))
+    elif "minecraftArguments" in version.keys():
+        args.extend(["-Djava.library.path=${natives_directory}", "-Dminecraft.launcher.brand=${launcher_name}", "-Dminecraft.launcher.version=${launcher_version}", "-cp", "${classpath}", version["mainClass"]])
+        args.extend(version["minecraftArguments"].split(" "))
+    argfile_path = os.path.realpath(os.path.join(os.getenv("temp"), "classpath.txt"))
+    with open(argfile_path, "w") as cpf:
+        cpf.write(cp)
+    blacklisted_launchvars = [
+        "--clientId",
+        "${clientid}",
+        "--xuid",
+        "${auth_xuid}",
+        "--userProperties",
+        "${user_properties}"
+    ]
+    launchvars = {
+        "auth_player_name": argv["username"],
+        "version_name": argv["version"],
+        "game_directory": argv["mcDir"],
+        "assets_root": os.path.join(argv["mcDir"], "assets"),
+        "assets_index_name": version["assets"],
+        "auth_uuid": account["minecraftProfile"]["id"],
+        "auth_access_token": argv["accessToken"],
+        "user_type": argv["accountType"],
+        "version_type": version["type"],
+        "natives_directory": os.path.join(argv["mcDir"], "versions", argv["version"], "natives"),
         "launcher_name": "AP-Launcher",
         "launcher_version": json.load(open("cache.json"))["launcherVersion"],
-        "library_directory": os.path.join(mcDir, "libraries"),
+        "library_directory": os.path.join(argv["mcDir"], "libraries"),
         "classpath_separator": os.pathsep,
-        "classpath": f'@{argFilePath}'
+        "classpath": f"@{argfile_path}"
     }
+    args = [arg.replace("$", "").format(**launchvars) for arg in args if arg not in blacklisted_launchvars]
+    return args
 
-    argList = javaArgs.split() + preJvmArgs + preGameArgs
-    argList.insert(0, javaHome)
-    finalArgs = [arg.replace("$", "").format(**launchVars) for arg in argList]
+def run_game(args):
+    with open("output.txt", "w") as f:
+        f.write(" ".join(args))
+    with subprocess.Popen(
+        args,
+        shell=True,
+        stdout=sys.stdout,
+        stdin=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT
+    ) as sb:
+        sb.wait()
+        sys.exit(sb.returncode)
 
-    logger.info("Running the game...")
-    sb = subprocess.Popen(finalArgs, 
-    shell=True,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.STDOUT,
-    stdin=subprocess.DEVNULL
-    )
-    isfirstpass = True
-    while sb.poll() is None:
-        line = sb.stdout.readline().decode("ISO-8859-1")
-        if not line == "":
-            sys.stdout.write(str(line))
-        launcherClient.send(b"\x00")
-except BaseException as e:
-    if not type(e).__name__ == "SystemExit":
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--username", action="store")
+    argparser.add_argument("--version", action="store")
+    argparser.add_argument("--accessToken", action="store")
+    argparser.add_argument("--accountType", action="store")
+    argparser.add_argument("--mcDir", action="store")
+    argparser.add_argument("--javaHome", action="store")
+    argparser.add_argument("--javaArgs", action="store", nargs="*")
+    argv = vars(argparser.parse_args())
+    argv["javaArgs"] = [arg.replace("+", "-") for arg in argv["javaArgs"]]
+    try:
+        logger.info("Reading base files...")
+        version, account, assets = get_info_files(argv)
+        logger.info("Downloading files...")
+        cp = update_files(version, argv["mcDir"], assets)
+        launchargs = get_args(version, argv, account, cp)
+        logger.info("Running the game...")
+        run_game(launchargs)
+    except Exception as e:
         logger.error(e, exc_info=True)
-        traceback.print_exc(file=open("launcher_logs/error.log", "w"))
-        launcherClient.send(b"\xff")
-    else:
-        launcherClient.send(b"\x00")
-    sys.exit()
+        sys.exit()
