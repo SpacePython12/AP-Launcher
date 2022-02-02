@@ -17,12 +17,12 @@ if __name__ == "__main__":
     if not os.path.isdir("launcher_logs/process"):
         os.mkdir("launcher_logs/process")
     if os.path.isfile("launcher_logs/process/latest.log"):
-        time = datetime.datetime.fromtimestamp(os.path.getctime("launcher_logs/process/latest.log")).strftime("%Y-%m-%d")
+        latest_time = datetime.datetime.fromtimestamp(os.path.getctime("launcher_logs/process/latest.log")).strftime("%Y-%m-%d")
         num = 1
-        while os.path.isfile(f"launcher_logs/process/{time}-{num}.log"):
+        while os.path.isfile(f"launcher_logs/process/{latest_time}-{num}.log"):
             num += 1
         try:
-            os.rename("launcher_logs/process/latest.log", f"launcher_logs/process/{time}-{num}.log")
+            os.rename("launcher_logs/process/latest.log", f"launcher_logs/process/{latest_time}-{num}.log")
         except:
             sys.exit()
     stream = logging.StreamHandler(sys.stdout)
