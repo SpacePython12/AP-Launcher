@@ -2,10 +2,8 @@ from tkinter import *
 from tkinter.ttk import *
 from tkinter.scrolledtext import ScrolledText
 from tkinter import messagebox, filedialog, Canvas
-from types import new_class
 import zipfile
 from PIL import ImageTk, Image
-from urllib.request import urlretrieve
 from urllib.error import *
 from zipfile import ZipFile
 from tarfile import TarFile
@@ -21,19 +19,23 @@ import re
 import shutil
 import datetime
 import time
-import hashlib
 import webbrowser
 import traceback
 import getpass
 import logging
-import socketserver
 import platform
 import psutil
 import math
 import webview
 import uuid
 
-__version__ = "1.0"
+__version__ = "1.0.1"
+
+def urlretrieve(url: str, filename: str):
+    with requests.get(url, stream=True, proxies={'http':'','https':''}) as i:
+        with open(filename, "wb") as o:
+            for packet in i.iter_content(65535):
+                o.write(packet)
 
 def send_error_report(fatal=False):
     try:
@@ -120,12 +122,10 @@ class LabeledEntry(Frame):
         super().grid(column=column, row=row)
         if sticky == "":
             super().grid(column=column, row=row)
-            self.label.grid(column=0, row=0)
-            self.entry.grid(column=1, row=0)
         else:
             super().grid(column=column, row=row, sticky=sticky)
-            self.label.grid(column=0, row=0, sticky=sticky)
-            self.entry.grid(column=1, row=0, sticky=sticky)
+        self.label.grid(column=0, row=0, sticky="w")
+        self.entry.grid(column=1, row=0, sticky="e")
 
     def get(self):
         return self.entryvar.get()
@@ -162,7 +162,7 @@ class App:
         self.mainframe = Frame(self.win)
         self.mainframe.rowconfigure(0, weight=1)
         self.mainframe.columnconfigure(0, weight=1)
-        self.tabs.add(self.mainframe, text="Versions", sticky="nsew")
+        self.tabs.add(self.mainframe, text="Home", sticky="nsew", image="house", compound="left")
         logger.info("Cleaning up any leftover update files...")
         if not os.path.isdir("assets"):
             os.mkdir("assets")
@@ -177,8 +177,8 @@ class App:
             pass
         logger.info("Downloading background and icon...")
         try:
-            urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/background.png", filename="assets/background.png")
-            urlretrieve(url="https://raw.github.com/SpacePython12/AP-Launcher/main/assets/icon.ico", filename="assets/icon.ico")
+            urlretrieve(url="https://raw.githubusercontent.com/SpacePython12/AP-Launcher/main/assets/background.png", filename="assets/background.png")
+            urlretrieve(url="https://raw.githubusercontent.com/SpacePython12/AP-Launcher/main/assets/icon.ico", filename="assets/icon.ico")
             logger.info("Retrieved background and icon successfully.")
         except HTTPError:
             logger.info("Unable to retrieve background and icon, using cached.")
@@ -236,31 +236,35 @@ class App:
         self.accounttype = "microsoft"
         self.premium = self.cache["premium"]
         THEME.theme_use(self.cache["theme"])
-        self.buttonframe = Frame(self.mainframe, padding=(10, 10))
-        self.background2.create_window((0, 0), window=self.buttonframe, anchor="s")
-        self.login_frame = Frame(self.buttonframe)
-        self.login_frame.grid(column=0, row=0)
-        self.connect_label = Label(self.login_frame, text=" Premium mode:  ")
-        self.connect_label.grid(column=2, row=0)
-        self.connect_var = IntVar(self.login_frame)
+        self.login_frame = Frame(self.mainframe, padding=(5, 5))
+        self.versionframe = Frame(self.mainframe, padding=(5, 5))
+        self.connect_frame = Frame(self.login_frame)
+        self.connect_frame.grid(column=0, row=1)
+        self.connect_label = Label(self.connect_frame, text="Premium: ")
+        self.connect_label.grid(column=0, row=0)
+        self.connect_var = IntVar(self.connect_frame)
         self.connect_var.set(self.premium)
-        self.connect_box = Checkbutton(self.login_frame, variable=self.connect_var)
-        self.connect_box.grid(column=3, row=0)
+        self.connect_box = Checkbutton(self.connect_frame, variable=self.connect_var)
+        self.connect_box.grid(column=1, row=0)
         self.username_var = StringVar(self.login_frame)
         self.username_var.set(str(self.username))
         self.username_label = Label(self.login_frame, text="Username: ")
         self.username_label.grid(column=0, row=0)
         self.username_entry = Entry(self.login_frame, textvariable=self.username_var)
         self.username_entry.grid(column=1, row=0)
-        self.login_button = Button(self.buttonframe, text="Login", command=lambda: self.login(self.username_var.get(), premium=bool(self.connect_var.get())))
-        self.login_button.grid(column=2, row=0)
+        self.login_button = Button(self.login_frame, text="Login", command=lambda: self.login(self.username_var.get(), premium=bool(self.connect_var.get())), width=18)
+        self.login_button.grid(column=1, row=1, sticky="nsew")
         self.toggle_premium_mode(self.username_label, self.username_entry, self.connect_var)
         self.connect_box.config(command=lambda: self.toggle_premium_mode(self.username_label, self.username_entry, self.connect_var))        
-        self.versionlabel = Label(self.buttonframe, text="  Version:  ")
-        self.versionlabel.grid(column=3, row=0)
-        self.versionlist = Combobox(self.buttonframe, textvariable=self.versionvar, width=30, state="readonly")
-        self.versionlist.grid(column=4, row=0)
+        self.versionlabel = Label(self.versionframe, text="Selected Version: ")
+        self.versionlabel.grid(column=0, row=0)
+        self.versionlist = Combobox(self.versionframe, textvariable=self.versionvar, width=30, state="readonly")
+        self.versionlist.grid(column=1, row=0)
         self.versionlist["values"] = self.versions
+        self.togameoutput = Button(self.versionframe, text="Game Output", command=lambda: self.tabs.select(1))
+        self.togameoutput.grid(column=0, row=1, sticky="nsew")
+        self.toprofile = Button(self.versionframe, text="Edit Version", command=lambda: self.tabs.select(2))
+        self.toprofile.grid(column=1, row=1, sticky="nsew")
         self.playbutton = Button(self.win, text="\nPlay\n", command=lambda: self.start_game())
         self.playbutton.grid(column=0, row=2, sticky="nsew")
         self.playcontext = Menu(self.win, tearoff=0)
@@ -274,23 +278,23 @@ class App:
         self.processtext = ProcessBoundText(self.processframe, state="disabled")
         self.processtext.grid(column=0, row=0, sticky="nsew")
         self.profileframe = Frame(self.win, padding=5)
-        self.profileframe.columnconfigure(0, weight=1)
+        self.processframe.columnconfigure(0, weight=1)
         self.tabs.add(self.profileframe, text="Profiles")
         self.profileselect = Frame(self.profileframe)
         self.profileselect.grid(column=0, row=0, sticky="nsew")
-        self.profilelabel = Label(self.profileselect, text="Profile: ")
+        self.profilelabel = Label(self.profileselect, text="Selected Profile: ")
         self.profilelabel.grid(column=0, row=0, sticky="nsew")
-        self.profilelist = Combobox(self.profileselect, textvariable=self.versionvar, state="readonly")
+        self.profilelist = Combobox(self.profileselect, textvariable=self.versionvar, state="readonly", width=28)
         self.profilelist.grid(column=1, row=0, sticky="nsew")
         self.profilelist["values"] = self.versions
         try:
-            self.profname = LabeledEntry(self.profileframe, "Name: ", self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]["name"])
+            self.profname = LabeledEntry(self.profileframe, "Profile Name:     ", self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]["name"], elength=30)
         except KeyError:
-            self.profname = LabeledEntry(self.profileframe, "Name: ", "")
+            self.profname = LabeledEntry(self.profileframe, "Profile Name:     ", "", elength=30)
         self.profname.grid(column=0, row=1, sticky="nsew")
         self.profgamedir = LabeledEntry(self.profileframe, "Game Directory: ", self.minecraftdir, elength=30)
         self.profgamedir.grid(column=0, row=2, sticky="nsew")
-        self.profjavadir = LabeledEntry(self.profileframe, "Java Directory: ", os.path.join(OS_SPECIFICS["java_home"], "bin", OS_SPECIFICS["java_executable"]), elength=30)
+        self.profjavadir = LabeledEntry(self.profileframe, "Java Directory:    ", os.path.join(OS_SPECIFICS["java_home"], "bin", OS_SPECIFICS["java_executable"]), elength=30)
         self.profjavadir.grid(column=0, row=3, sticky="nsew")
         self.jvmargs = "-Xmx2G"
         if "javaArgs" in self.accounts["profiles"][self.nametoprofile[self.versionvar.get()]]:
@@ -304,19 +308,20 @@ class App:
         self.allocram.set((float(self.allocramraw[:-1])))
         self.allocramlabel = Label(self.profileframe, text=f"Allocated RAM: {self.allocram.get()} GB", anchor="nw")
         self.allocramlabel.grid(column=0, row=4, sticky="nsew")
-        self.allocramslider = tkinter.Scale(self.profileframe, from_=1.0, to=round(psutil.virtual_memory().total/(1024.**3), 1), resolution=0.1, showvalue=False, orient="horizontal", variable=self.allocram, command=self.update_alloc_ram, length=200)
-        self.allocramslider.grid(column=0, row=5, sticky="nw")
+        self.allocramslider = tkinter.Scale(self.profileframe, from_=1.0, to=round(psutil.virtual_memory().total/(1024.**3), 1), resolution=0.1, showvalue=False, orient="horizontal", variable=self.allocram, command=self.update_alloc_ram, length=200, width=20)
+        self.allocramslider.grid(column=0, row=5, sticky="nsew")
         self.profsave = Button(self.profileframe, text="Save")
-        self.profsave.grid(column=0, row=6, sticky="w")
+        self.profsave.grid(column=0, row=6, sticky="nsew")
         self.proftrans = Label(self.profileframe, text="OR")
-        self.proftrans.grid(column=0, row=7, sticky="w")
+        self.proftrans.grid(column=0, row=7, sticky="nsew")
         self.profadd = Button(self.profileframe, text="Import new version", command=lambda: self.open_install_archive())
-        self.profadd.grid(column=0, row=8, sticky="w")
+        self.profadd.grid(column=0, row=8, sticky="nsew")
         self.availableversion = StringVar(self.win)
         self.availableversionlist = Combobox(self.profileframe, textvariable=self.availableversion, state="readonly")
         self.profadd = Button(self.profileframe, text="Create new version", command=lambda: self.add_available_versions())
-        self.profadd.grid(column=0, row=10, sticky="w")
+        self.profadd.grid(column=0, row=10, sticky="nsew")
         self.update_profiles(self.versionvar.get())
+        self.versionlist.bind("<<ComboboxSelected>>", lambda x: self.update_profiles(self.versionvar.get()))
         self.profilelist.bind("<<ComboboxSelected>>", lambda x: self.update_profiles(self.versionvar.get()))
         self.otherpage = OtherPage(self.win)
         self.otherpage.columnconfigure(0, weight=1)
@@ -334,12 +339,14 @@ class App:
             self.jvmargs = self.jvmargs.replace(oldarg, f"-Xmx{int(self.allocram.get())}{suffix}")
     
     def resize_widgets(self, e):
+        """Resizes widgets on window resize"""
         self.bgfile = Image.open("assets/background.png")
         self.bgfile = self.bgfile.resize((self.background2.winfo_width(), self.background2.winfo_height()), Image.ANTIALIAS)
         self.background = ImageTk.PhotoImage(self.bgfile)
         self.background2.create_image(0, 0, image=self.background, anchor="nw")
         self.background2.update()
-        self.background2.create_window((int(self.background.width()/2), self.background.height()-5), window=self.buttonframe, anchor="s")
+        self.background2.create_window((5, self.background.height()-5), window=self.login_frame, anchor="sw")
+        self.background2.create_window((self.background.width()-5, self.background.height()-5), window=self.versionframe, anchor="se")
 
     def kill_process(self):
         """Kills the running Minecraft process."""
@@ -445,6 +452,16 @@ class App:
             self.username = username
             self.cache["username"] = username
             self.cache["premium"] = premium
+            account_json = json.load(open(os.path.join(self.minecraftdir, "launcher_accounts.json")))
+            accounts = [account for account in account_json["accounts"].keys() if account_json["accounts"][account]["minecraftProfile"]["name"] == username]
+            rand_uuid = uuid.uuid4()
+            if len(accounts) == 0:
+                account_json["accounts"][str(uuid.uuid4().hex).replace("-", "")] = {
+                    "minecraftProfile": {
+                        "id": rand_uuid,
+                        "name": self.username
+                    }
+                }
         else:
             if not messagebox.askyesno("Experimental features ahead", "This is an experimental feature that has NOT been fully developed.\nI am NOT responsible for ANY damage that this inflicts on your AP Launcher or Minecraft installation.\nAre you sure you want to continue?"):
                 return
@@ -584,7 +601,7 @@ class App:
 
     def sbloop(self):
         """Launcher process"""
-        self.playbutton.config(state="disabled", text="\nPlaying...\n")
+        self.playbutton.config(state="disabled", text="\nPlaying...\n", cursor="arrow")
         self.playcontext.entryconfigure(0, state="normal")
         cmdargs = [
         "launcher_process",
@@ -760,9 +777,11 @@ class App:
         with zipfile.ZipFile(os.path.join("update", installer_archive)) as i:
             i.extractall("update", include)
             for f in os.listdir(os.path.join("update", names[platform.system()])):
-                os.rename(f, f.replace(OS_SPECIFICS["defaultext"], "") + "_old" + OS_SPECIFICS["defaultext"])
-                shutil.move(os.path.join("update", names[platform.system()], f), f)
-        
+                try:
+                    os.rename(f, f.replace(OS_SPECIFICS["defaultext"], "") + "_old" + OS_SPECIFICS["defaultext"])
+                    shutil.move(os.path.join("update", names[platform.system()], f), f)
+                except:
+                    pass
 
     def get_available_versions(self):
         """Tries to download version manifest, then adds versions found in .minecraft folder to a list."""

@@ -30,9 +30,9 @@ if __name__ == "__main__":
     logging.basicConfig(format="[%(asctime)s] (Process %(processName)s thread %(threadName)s func %(funcName)s/%(levelname)s): %(message)s", handlers=[logging.FileHandler("launcher_logs/process/latest.log"), stream], level=logging.INFO)
     logger = logging.getLogger()
 
-def download(url, path, mode="w"):
+def download(url, path):
     with requests.get(url, allow_redirects=False, stream=True) as res:
-        with open(path, mode) as resfile:
+        with open(path, "wb") as resfile:
             for chunk in res.iter_content(8192):
                 resfile.write(bytes(chunk))
             resfile.close()
@@ -108,7 +108,7 @@ def get_classpath(version, mc_dir):
             os.makedirs(os.path.join(mc_dir, "libraries", *blob["path"].split("/")[:-1]), exist_ok=True)
         try:   
             if not os.path.exists(os.path.join(mc_dir, "libraries", *blob["path"].split("/"))):
-                download(blob["url"], os.path.join(mc_dir, "libraries", *blob["path"].split("/")), mode="wb")
+                download(blob["url"], os.path.join(mc_dir, "libraries", *blob["path"].split("/")))
         except:
             logger.error(f"FAILURE downloading {jar_file}. The game may not function properly.")
         if lib_name == "log4j-core":
@@ -152,9 +152,6 @@ def update_files(version, mc_dir, assets):
         else:
             logger.error("Unable to download main jar. The game cannot run.")
             sys.exit()
-    logger.info("Downloading libraries...")
-    cp = get_classpath(version, mc_dir)
-    return cp
 
 def get_info_files(argv):
     accounts = json.load(open(os.path.join(argv["mcDir"], "launcher_accounts.json")))
@@ -276,7 +273,8 @@ if __name__ == "__main__":
         logger.info("Reading base files...")
         version, account, assets = get_info_files(argv)
         logger.info("Downloading files...")
-        cp = update_files(version, argv["mcDir"], assets)
+        update_files(version, argv["mcDir"], assets)
+        cp = get_classpath(version, argv["mcDir"])
         launchargs = get_args(version, argv, account, cp)
         logger.info("Running the game...")
         run_game(launchargs)
