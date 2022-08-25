@@ -1,5 +1,6 @@
 # AP-Launcher
 A custom Minecraft launcher coded entirely in python. 
+**THIS PROJECT IS NO LONGER MAINTAINED**
 
 * I am NOT responsible for any punishments given out by your network administrator for downloading this software.
 * This is a passion project, meaning if people download this, they are responsible for their OWN actions.
